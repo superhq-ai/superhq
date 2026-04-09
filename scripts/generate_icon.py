@@ -67,6 +67,8 @@ SHD_STOPS = [
 
 # macOS squircle corner radius ≈ 22.37% of icon size
 CORNER_RATIO = 0.2237
+# macOS icons have ~4% transparent margin on each side
+INSET_RATIO = 0.04
 
 
 def lerp_gradient(stops, t):
@@ -125,43 +127,45 @@ def make_png(width, height, pixels_rgba):
     return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def squircle_distance(px, py, size):
-    """Distance from edge of squircle. >0 = inside, <0 = outside."""
-    r = size * CORNER_RATIO
-    # In the straight portions
-    if px >= r and px <= size - r:
-        return min(py, size - py)
-    if py >= r and py <= size - r:
-        return min(px, size - px)
-    # In corner regions — distance from corner circle
-    cx = r if px < r else size - r
-    cy = r if py < r else size - r
-    dx = px - cx
-    dy = py - cy
+def squircle_distance(px, py, inset, icon_size):
+    """Distance from edge of squircle. >0 = inside, <0 = outside.
+    The squircle is inset from the full icon canvas."""
+    sq_size = icon_size - 2 * inset
+    # Map to squircle-local coords
+    lx = px - inset
+    ly = py - inset
+    r = sq_size * CORNER_RATIO
+    if lx >= r and lx <= sq_size - r:
+        return min(ly, sq_size - ly)
+    if ly >= r and ly <= sq_size - r:
+        return min(lx, sq_size - lx)
+    cx = r if lx < r else sq_size - r
+    cy = r if ly < r else sq_size - r
+    dx = lx - cx
+    dy = ly - cy
     return r - (dx * dx + dy * dy) ** 0.5
 
 
 def render(size):
     """Render the grid scaled up to `size` x `size` with chrome gradients and border."""
-    scale = size / GRID_SIZE
+    inset = size * INSET_RATIO
+    sq_size = size - 2 * inset
+    scale = sq_size / GRID_SIZE
     border_w = max(1.0, size * BORDER_WIDTH_RATIO)
     buf = bytearray(size * size * 4)
 
     for py in range(size):
         for px in range(size):
             idx = (py * size + px) * 4
-            dist = squircle_distance(px + 0.5, py + 0.5, size)
+            dist = squircle_distance(px + 0.5, py + 0.5, inset, size)
 
             if dist < -0.5:
-                # Outside
                 buf[idx : idx + 4] = b"\x00\x00\x00\x00"
                 continue
 
             if dist < border_w:
-                # Border region — chrome gradient
                 t = py / max(size - 1, 1)
                 r, g, b = lerp_gradient(BORDER_STOPS, t)
-                # Anti-alias the outer edge
                 alpha = min(255, int((dist + 0.5) * 255))
                 buf[idx] = r
                 buf[idx + 1] = g
@@ -169,8 +173,11 @@ def render(size):
                 buf[idx + 3] = max(0, alpha)
                 continue
 
-            gx = min(int(px / scale), GRID_SIZE - 1)
-            gy = min(int(py / scale), GRID_SIZE - 1)
+            # Map pixel to grid, offset by inset
+            gx = min(int((px - inset) / scale), GRID_SIZE - 1)
+            gy = min(int((py - inset) / scale), GRID_SIZE - 1)
+            gx = max(0, gx)
+            gy = max(0, gy)
             r, g, b = pixel_color(GRID[gy][gx], py, size)
             buf[idx] = r
             buf[idx + 1] = g
