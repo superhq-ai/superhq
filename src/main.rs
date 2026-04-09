@@ -503,14 +503,14 @@ fn main() -> Result<()> {
                             cx.stop_propagation();
                         }
                         // cmd+shift+] → next tab, cmd+shift+[ → prev tab
-                        // On macOS, shift+[ = { and shift+] = }
+                        // macOS reports key as "{" / "}" with shift=false
                         if m.platform && !m.control && !m.alt {
                             match key {
-                                "}" | "]" if m.shift => {
+                                "}" => {
                                     terminal.update(cx, |p, cx| p.next_tab(window, cx));
                                     cx.stop_propagation();
                                 }
-                                "{" | "[" if m.shift => {
+                                "{" => {
                                     terminal.update(cx, |p, cx| p.prev_tab(window, cx));
                                     cx.stop_propagation();
                                 }
