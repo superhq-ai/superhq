@@ -6,6 +6,7 @@ use std::collections::HashSet;
 #[derive(RustEmbed)]
 #[folder = "assets"]
 #[include = "icons/**/*.svg"]
+#[include = "app-icon-128.png"]
 struct AppAssets;
 
 /// Combined asset source: our local assets first, then gpui-component defaults.

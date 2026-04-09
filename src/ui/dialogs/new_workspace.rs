@@ -13,6 +13,7 @@ pub struct NewWorkspaceDialog {
     mount_path: Option<String>,
     on_created: Box<dyn Fn(&mut Window, &mut App) + 'static>,
     on_dismiss: Box<dyn Fn(&mut Window, &mut App) + 'static>,
+    focus_handle: FocusHandle,
 }
 
 impl NewWorkspaceDialog {
@@ -29,12 +30,15 @@ impl NewWorkspaceDialog {
             state.focus(window, cx);
             state
         });
+        let focus_handle = cx.focus_handle();
+        focus_handle.focus(window);
         Self {
             db,
             name_input,
             mount_path: None,
             on_created: Box::new(on_created),
             on_dismiss: Box::new(on_dismiss),
+            focus_handle,
         }
     }
 
@@ -126,6 +130,12 @@ impl Render for NewWorkspaceDialog {
             .child(
                 div()
                     .id("dialog-card")
+                    .track_focus(&self.focus_handle)
+                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                        if event.keystroke.key == "escape" {
+                            this.dismiss(window, cx);
+                        }
+                    }))
                     .w(px(360.0))
                     .bg(t::bg_surface())
                     .border_1()

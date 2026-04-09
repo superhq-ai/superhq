@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS workspaces (
     -- Port forwarding (JSON array)
     port_mappings TEXT DEFAULT '[]',
 
+    -- Host ports exposed to sandbox (JSON array)
+    expose_host_ports TEXT DEFAULT '[]',
+
     -- Sandbox runtime
     sandbox_instance_dir TEXT,
     sandbox_checkpoint_name TEXT,
@@ -50,6 +53,17 @@ CREATE TABLE IF NOT EXISTS snapshots (
     auto_generated INTEGER NOT NULL DEFAULT 0,
     trigger TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS agents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    icon TEXT,
+    color TEXT,
+    is_builtin INTEGER NOT NULL DEFAULT 0,
+    tab_order INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS terminal_tabs (
@@ -79,17 +93,6 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 INSERT OR IGNORE INTO settings (id) VALUES (1);
-
-CREATE TABLE IF NOT EXISTS agents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    display_name TEXT NOT NULL,
-    command TEXT NOT NULL,
-    icon TEXT,
-    color TEXT,
-    is_builtin INTEGER NOT NULL DEFAULT 0,
-    tab_order INTEGER NOT NULL DEFAULT 0
-);
 
 CREATE TABLE IF NOT EXISTS secrets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

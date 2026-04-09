@@ -3,6 +3,7 @@ pub(crate) mod dropdown;
 mod general;
 mod providers;
 mod sandbox;
+mod shortcuts;
 
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
@@ -34,6 +35,7 @@ pub enum SettingsTab {
     General,
     Secrets,
     Sandbox,
+    Shortcuts,
 }
 
 impl SettingsTab {
@@ -42,11 +44,12 @@ impl SettingsTab {
             Self::General => "General",
             Self::Secrets => "Providers",
             Self::Sandbox => "Sandbox",
+            Self::Shortcuts => "Shortcuts",
         }
     }
 
     fn all() -> &'static [SettingsTab] {
-        &[SettingsTab::General, SettingsTab::Secrets, SettingsTab::Sandbox]
+        &[SettingsTab::General, SettingsTab::Secrets, SettingsTab::Sandbox, SettingsTab::Shortcuts]
     }
 }
 
@@ -332,6 +335,9 @@ impl Render for SettingsPanel {
                                         }
                                         SettingsTab::Sandbox => {
                                             self.render_sandbox_tab(cx).into_any_element()
+                                        }
+                                        SettingsTab::Shortcuts => {
+                                            Self::render_shortcuts_tab().into_any_element()
                                         }
                                     }),
                             ),

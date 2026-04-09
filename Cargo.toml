@@ -11,6 +11,7 @@ gpui-terminal = { path = "crates/gpui-terminal" }
 portable-pty = "0.9"
 parking_lot = "0.12"
 shuru-sdk = { path = "../shuru/crates/shuru-sdk" }
+shuru-proto = { path = "../shuru/crates/shuru-proto" }
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 anyhow = "1"
@@ -20,7 +21,7 @@ serde_json = "1"
 rust-embed = "8"
 aes-gcm = "0.10"
 getrandom = "0.2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "native-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "native-tls", "stream", "blocking"] }
 sha2 = "0.10"
 base64 = "0.22"
 toml = "1.1.0"
@@ -31,4 +32,7 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 similar = "2"
 flume = "0.12"
+flate2 = "1"
+tar = "0.4"
 ropey = "=2.0.0-beta.1"
+ignore = "0.4.25"

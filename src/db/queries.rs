@@ -66,7 +66,7 @@ impl Database {
              branch_name, base_branch, git_status, diff_stats, pr_number, pr_url,
              sandbox_cpus, sandbox_memory_mb, sandbox_disk_mb, allowed_hosts,
              secrets_config, sandbox_instance_dir, sandbox_checkpoint_name,
-             created_at, stopped_at, deleting_at, port_mappings
+             created_at, stopped_at, deleting_at, port_mappings, expose_host_ports
              FROM workspaces
              WHERE status != 'archived'
              ORDER BY tab_order ASC",
@@ -77,6 +77,7 @@ impl Database {
             let diff_stats_str: Option<String> = row.get(14)?;
             let allowed_hosts_str: Option<String> = row.get(20)?;
             let port_mappings_str: Option<String> = row.get(27)?;
+            let expose_host_str: Option<String> = row.get(28)?;
 
             Ok(Workspace {
                 id: row.get(0)?,
@@ -105,6 +106,9 @@ impl Database {
                     .and_then(|s| serde_json::from_str(&s).ok()),
                 secrets_config: row.get(21)?,
                 port_mappings: port_mappings_str
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default(),
+                expose_host_ports: expose_host_str
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default(),
                 sandbox_instance_dir: row.get(22)?,
@@ -188,6 +192,47 @@ impl Database {
         let mut mappings = self.get_port_mappings(workspace_id)?;
         mappings.retain(|m| m.guest_port != guest_port);
         self.set_port_mappings(workspace_id, &mappings)
+    }
+
+    // ── Expose host ports ────────────────────────────────────────
+
+    /// Get host ports exposed to a workspace's sandbox.
+    pub fn get_expose_host_ports(&self, workspace_id: i64) -> Result<Vec<ExposeHostPort>> {
+        let conn = self.conn.lock().unwrap();
+        let json: String = conn.query_row(
+            "SELECT COALESCE(expose_host_ports, '[]') FROM workspaces WHERE id = ?1",
+            [workspace_id],
+            |row| row.get(0),
+        )?;
+        Ok(serde_json::from_str(&json).unwrap_or_default())
+    }
+
+    /// Set host ports exposed to a workspace's sandbox.
+    pub fn set_expose_host_ports(&self, workspace_id: i64, mappings: &[ExposeHostPort]) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let json = serde_json::to_string(mappings)?;
+        conn.execute(
+            "UPDATE workspaces SET expose_host_ports = ?1 WHERE id = ?2",
+            rusqlite::params![json, workspace_id],
+        )?;
+        Ok(())
+    }
+
+    /// Add a single expose-host mapping to a workspace.
+    pub fn add_expose_host_port(&self, workspace_id: i64, mapping: &ExposeHostPort) -> Result<()> {
+        let mut mappings = self.get_expose_host_ports(workspace_id)?;
+        if mappings.iter().any(|m| m.host_port == mapping.host_port) {
+            anyhow::bail!("Host port {} is already exposed", mapping.host_port);
+        }
+        mappings.push(mapping.clone());
+        self.set_expose_host_ports(workspace_id, &mappings)
+    }
+
+    /// Remove an expose-host mapping by host port.
+    pub fn remove_expose_host_port(&self, workspace_id: i64, host_port: u16) -> Result<()> {
+        let mut mappings = self.get_expose_host_ports(workspace_id)?;
+        mappings.retain(|m| m.host_port != host_port);
+        self.set_expose_host_ports(workspace_id, &mappings)
     }
 
     /// Soft-delete a workspace (set deleting_at).

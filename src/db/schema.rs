@@ -64,6 +64,15 @@ pub struct PortMapping {
     pub host_port: u16,
 }
 
+/// A host port exposed to the sandbox via host.shuru.internal.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExposeHostPort {
+    /// Port on the host machine (localhost:{host_port}).
+    pub host_port: u16,
+    /// Port visible inside the sandbox (host.shuru.internal:{guest_port}).
+    pub guest_port: u16,
+}
+
 /// A workspace row from the database.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -99,6 +108,9 @@ pub struct Workspace {
 
     // Port forwarding (guest -> host)
     pub port_mappings: Vec<PortMapping>,
+
+    // Host ports exposed to sandbox (host -> guest)
+    pub expose_host_ports: Vec<ExposeHostPort>,
 
     // Sandbox runtime
     pub sandbox_instance_dir: Option<String>,

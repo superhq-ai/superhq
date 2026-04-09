@@ -3,6 +3,7 @@ use crate::ui::review::SidePanel;
 use crate::ui::terminal::TerminalPanel;
 use crate::ui::theme as t;
 use gpui::*;
+use gpui::prelude::FluentBuilder as _;
 use std::sync::Arc;
 
 use super::workspace_item::WorkspaceItemView;
@@ -13,7 +14,8 @@ pub struct WorkspaceListView {
     workspace_views: Vec<Entity<WorkspaceItemView>>,
     terminal_panel: Entity<TerminalPanel>,
     review_panel: Entity<SidePanel>,
-    active_workspace_id: Option<i64>,
+    pub active_workspace_id: Option<i64>,
+    pub cmd_held: bool,
     on_new_workspace: std::rc::Rc<dyn Fn(&mut Window, &mut App) + 'static>,
     on_workspace_activated: std::rc::Rc<dyn Fn(&mut App) + 'static>,
 }
@@ -39,9 +41,45 @@ impl WorkspaceListView {
             terminal_panel,
             review_panel,
             active_workspace_id,
+            cmd_held: false,
             on_new_workspace,
             on_workspace_activated,
         }
+    }
+
+    /// Activate workspace at the given 0-based index.
+    pub fn activate_by_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let workspaces = self.db.list_workspaces().unwrap_or_default();
+        if let Some(ws) = workspaces.get(index) {
+            let ws_id = ws.id;
+            if self.active_workspace_id == Some(ws_id) {
+                return;
+            }
+            let ws = ws.clone();
+            self.terminal_panel.update(cx, |panel, cx| {
+                panel.activate_workspace(&ws, window, cx);
+            });
+            let review = self.review_panel.clone();
+            review.update(cx, |panel, cx| {
+                panel.show_waiting(ws.id, "/workspace".to_string(), ws.mount_path.clone(), cx);
+            });
+            self.terminal_panel.update(cx, |panel, cx| {
+                panel.notify_side_panel_pub(ws_id, cx);
+            });
+            self.active_workspace_id = Some(ws_id);
+            (self.on_workspace_activated)(cx);
+            self.refresh(cx);
+        }
+    }
+
+    pub fn set_show_badges(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.cmd_held = show;
+        for (i, view) in self.workspace_views.iter().enumerate() {
+            view.update(cx, |item, _| {
+                item.badge_index = if show && i < 9 { Some(i + 1) } else { None };
+            });
+        }
+        cx.notify();
     }
 
     pub fn clear_active(&mut self, cx: &mut Context<Self>) {
@@ -132,7 +170,23 @@ impl Render for WorkspaceListView {
                     .on_click(move |_event, window, cx| {
                         on_new(window, cx);
                     })
-                    .child("+ New Workspace"),
+                    .relative()
+                    .child("+ New Workspace")
+                    .when(self.cmd_held, |el: Stateful<Div>| {
+                        el.child(
+                            div()
+                                .absolute()
+                                .right(px(8.0))
+                                .top(px(6.0))
+                                .px(px(5.0))
+                                .py(px(1.0))
+                                .rounded(px(4.0))
+                                .bg(t::bg_selected())
+                                .text_xs()
+                                .text_color(t::text_muted())
+                                .child("\u{2318}N"),
+                        )
+                    }),
             )
             .child(div().h(px(1.0)).mx_2p5().bg(t::border_subtle()))
             .child(

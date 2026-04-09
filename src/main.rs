@@ -2,6 +2,7 @@ mod agents;
 mod assets;
 mod db;
 mod oauth;
+mod runtime;
 mod sandbox;
 mod ui;
 
@@ -12,13 +13,26 @@ use gpui::prelude::FluentBuilder as _;
 use gpui_component::resizable::{h_resizable, resizable_panel};
 use gpui_component::{Root, Theme, ThemeMode};
 use std::sync::Arc;
-use ui::dialogs::forward_port::ForwardPortDialog;
 use ui::dialogs::new_workspace::NewWorkspaceDialog;
+use ui::dialogs::ports::PortsDialog;
 
-actions!(superhq, [NewWorkspaceAction, OpenSettingsAction]);
+actions!(
+    superhq,
+    [
+        NewWorkspaceAction,
+        OpenSettingsAction,
+        ActivateWorkspace1, ActivateWorkspace2, ActivateWorkspace3,
+        ActivateWorkspace4, ActivateWorkspace5, ActivateWorkspace6,
+        ActivateWorkspace7, ActivateWorkspace8, ActivateWorkspace9,
+        ActivateTab1, ActivateTab2, ActivateTab3,
+        ActivateTab4, ActivateTab5, ActivateTab6,
+        ActivateTab7, ActivateTab8, ActivateTab9,
+    ]
+);
 use ui::components::Toast;
 use ui::review::SidePanel;
 use ui::settings::SettingsPanel;
+use ui::setup::{SetupComplete, SetupScreen};
 use ui::sidebar::workspace_list::WorkspaceListView;
 use ui::terminal::TerminalPanel;
 
@@ -30,16 +44,22 @@ struct AppView {
     review: Entity<SidePanel>,
     toast: Entity<Toast>,
     dialog: Option<Entity<NewWorkspaceDialog>>,
-    port_dialog: Option<Entity<ForwardPortDialog>>,
+    ports_dialog: Option<Entity<PortsDialog>>,
     settings: Option<Entity<SettingsPanel>>,
+    setup: Option<Entity<SetupScreen>>,
+    cmd_held: bool,
+    ctrl_held: bool,
+    focus_handle: FocusHandle,
+    /// Kept alive to keep the keystroke interceptor registered.
+    _keystroke_sub: Option<gpui::Subscription>,
 }
 
 impl AppView {
     fn new(db: Arc<Database>, cx: &mut Context<Self>) -> Self {
         let this_for_settings = cx.entity().downgrade();
         let this_for_ports = cx.entity().downgrade();
-        let terminal = cx.new(|_cx| {
-            let mut panel = TerminalPanel::new(db.clone());
+        let terminal = cx.new(|cx| {
+            let mut panel = TerminalPanel::new(db.clone(), cx);
             let app = this_for_settings.clone();
             panel.set_on_open_settings(move |window, cx| {
                 let _ = app.update(cx, |this: &mut Self, cx| {
@@ -48,7 +68,7 @@ impl AppView {
             });
             panel.set_on_open_port_dialog(move |ws_id, window, cx| {
                 let _ = this_for_ports.update(cx, |this: &mut Self, cx| {
-                    this.open_forward_port_dialog(ws_id, window, cx);
+                    this.open_ports_dialog(ws_id, window, cx);
                 });
             });
             panel
@@ -80,6 +100,19 @@ impl AppView {
             )
         });
         let toast = cx.new(|_| Toast::new());
+
+        let setup = if runtime::is_ready() {
+            None
+        } else {
+            let view = cx.new(|cx| SetupScreen::new(cx));
+            cx.subscribe(&view, |this: &mut Self, _, _: &SetupComplete, cx| {
+                this.setup = None;
+                cx.notify();
+            })
+            .detach();
+            Some(view)
+        };
+
         Self {
             db,
             sidebar,
@@ -87,9 +120,27 @@ impl AppView {
             review,
             toast,
             dialog: None,
-            port_dialog: None,
+            ports_dialog: None,
             settings: None,
+            setup,
+            cmd_held: false,
+            ctrl_held: false,
+            focus_handle: cx.focus_handle(),
+            _keystroke_sub: None,
         }
+    }
+
+    fn close_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings = None;
+        // Restore active workspace highlight in sidebar
+        let active_ws = self.terminal.read(cx).active_workspace_id;
+        if let Some(ws_id) = active_ws {
+            self.sidebar.update(cx, |view, cx| {
+                view.active_workspace_id = Some(ws_id);
+                view.refresh(cx);
+            });
+        }
+        cx.notify();
     }
 
     fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -107,8 +158,7 @@ impl AppView {
                 toast,
                 move |_window, cx| {
                     this.update(cx, |app, cx| {
-                        app.settings = None;
-                        cx.notify();
+                        app.close_settings(cx);
                     })
                     .ok();
                     // Notify terminal panel to re-check missing secrets
@@ -124,17 +174,17 @@ impl AppView {
         cx.notify();
     }
 
-    fn open_forward_port_dialog(&mut self, ws_id: i64, window: &mut Window, cx: &mut Context<Self>) {
+    fn open_ports_dialog(&mut self, ws_id: i64, window: &mut Window, cx: &mut Context<Self>) {
         let db = self.db.clone();
         let this = cx.entity().downgrade();
 
         let view = cx.new(|cx| {
-            ForwardPortDialog::new(
+            PortsDialog::new(
                 db,
                 ws_id,
                 move |_window, cx| {
                     this.update(cx, |app, cx| {
-                        app.port_dialog = None;
+                        app.ports_dialog = None;
                         cx.notify();
                     }).ok();
                 },
@@ -142,7 +192,7 @@ impl AppView {
                 cx,
             )
         });
-        self.port_dialog = Some(view);
+        self.ports_dialog = Some(view);
         cx.notify();
     }
 
@@ -180,13 +230,38 @@ impl AppView {
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::theme as t;
+
+        // First-run setup — full screen, nothing else visible
+        if let Some(setup) = &self.setup {
+            return div()
+                .id("app-root")
+                .size_full()
+                .bg(t::bg_base())
+                .child(setup.clone())
+                .into_any_element();
+        }
+
         let show_review = self.review.read(cx).visible;
         let show_settings = self.settings.is_some();
 
         div()
             .id("app-root")
+            .track_focus(&self.focus_handle)
             .size_full()
             .bg(t::bg_base())
+            .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _window, cx| {
+                let cmd = event.modifiers.platform;
+                let ctrl = event.modifiers.control;
+                if this.cmd_held != cmd || this.ctrl_held != ctrl {
+                    this.cmd_held = cmd;
+                    this.ctrl_held = ctrl;
+                    this.sidebar.update(cx, |view, cx| view.set_show_badges(cmd, cx));
+                    this.terminal.update(cx, |panel, cx| {
+                        panel.show_tab_badges = ctrl;
+                        cx.notify();
+                    });
+                }
+            }))
             .on_action(cx.listener(|this, _: &NewWorkspaceAction, window, cx| {
                 this.open_new_workspace_dialog(window, cx);
             }))
@@ -238,14 +313,29 @@ impl Render for AppView {
                                                     .on_click(
                                                         cx.listener(|this, _, window, cx| {
                                                             if this.settings.is_some() {
-                                                                this.settings = None;
-                                                                cx.notify();
+                                                                this.close_settings(cx);
                                                             } else {
                                                                 this.open_settings(window, cx);
                                                             }
                                                         }),
                                                     )
-                                                    .child("Settings"),
+                                                    .relative()
+                                                    .child("Settings")
+                                                    .when(self.cmd_held, |el: Stateful<Div>| {
+                                                        el.child(
+                                                            div()
+                                                                .absolute()
+                                                                .right(px(8.0))
+                                                                .top(px(6.0))
+                                                                .px(px(5.0))
+                                                                .py(px(1.0))
+                                                                .rounded(px(4.0))
+                                                                .bg(t::bg_selected())
+                                                                .text_xs()
+                                                                .text_color(t::text_muted())
+                                                                .child("\u{2318},"),
+                                                        )
+                                                    }),
                                             ),
                                     ),
                             ),
@@ -278,10 +368,11 @@ impl Render for AppView {
             )
             .children(self.settings.as_ref().map(|s| s.clone()))
             .children(self.dialog.as_ref().map(|d| d.clone()))
-            .children(self.port_dialog.as_ref().map(|d| d.clone()))
+            .children(self.ports_dialog.as_ref().map(|d| d.clone()))
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
             .child(self.toast.clone())
+            .into_any_element()
     }
 }
 
@@ -319,6 +410,26 @@ fn main() -> Result<()> {
             KeyBinding::new("cmd-w", ui::terminal::CloseActiveTab, Some("Terminal")),
             KeyBinding::new("cmd-shift-]", ui::terminal::NextTab, Some("Terminal")),
             KeyBinding::new("cmd-shift-[", ui::terminal::PrevTab, Some("Terminal")),
+            // Workspace switching: cmd+1..9
+            KeyBinding::new("cmd-1", ActivateWorkspace1, None),
+            KeyBinding::new("cmd-2", ActivateWorkspace2, None),
+            KeyBinding::new("cmd-3", ActivateWorkspace3, None),
+            KeyBinding::new("cmd-4", ActivateWorkspace4, None),
+            KeyBinding::new("cmd-5", ActivateWorkspace5, None),
+            KeyBinding::new("cmd-6", ActivateWorkspace6, None),
+            KeyBinding::new("cmd-7", ActivateWorkspace7, None),
+            KeyBinding::new("cmd-8", ActivateWorkspace8, None),
+            KeyBinding::new("cmd-9", ActivateWorkspace9, None),
+            // Tab switching: ctrl+1..9
+            KeyBinding::new("ctrl-1", ActivateTab1, None),
+            KeyBinding::new("ctrl-2", ActivateTab2, None),
+            KeyBinding::new("ctrl-3", ActivateTab3, None),
+            KeyBinding::new("ctrl-4", ActivateTab4, None),
+            KeyBinding::new("ctrl-5", ActivateTab5, None),
+            KeyBinding::new("ctrl-6", ActivateTab6, None),
+            KeyBinding::new("ctrl-7", ActivateTab7, None),
+            KeyBinding::new("ctrl-8", ActivateTab8, None),
+            KeyBinding::new("ctrl-9", ActivateTab9, None),
         ]);
 
 
@@ -338,6 +449,98 @@ fn main() -> Result<()> {
             },
             |window, cx| {
                 let view = cx.new(|cx| AppView::new(db, cx));
+
+                // Ensure the app root has focus so keystrokes work before a terminal is opened
+                view.read(cx).focus_handle.focus(window);
+
+                // Global keystroke interceptor — fires before all element handlers
+                let sidebar = view.read(cx).sidebar.clone();
+                let terminal = view.read(cx).terminal.clone();
+                let app_view = view.clone();
+                let sub = cx.intercept_keystrokes({
+                    let sidebar = sidebar.clone();
+                    let terminal = terminal.clone();
+                    move |event, window, cx| {
+                        let key = event.keystroke.key.as_str();
+                        let m = &event.keystroke.modifiers;
+                        // cmd+1..9 → switch workspace
+                        if m.platform && !m.control && !m.alt && !m.shift {
+                            if let Some(n) = match key {
+                                "1" => Some(0), "2" => Some(1), "3" => Some(2),
+                                "4" => Some(3), "5" => Some(4), "6" => Some(5),
+                                "7" => Some(6), "8" => Some(7), "9" => Some(8),
+                                _ => None,
+                            } {
+                                sidebar.update(cx, |v, cx| v.activate_by_index(n, window, cx));
+                                cx.stop_propagation();
+                            }
+                        }
+                        // ctrl+1..9 → switch tab
+                        if m.control && !m.platform && !m.alt && !m.shift {
+                            if let Some(n) = match key {
+                                "1" => Some(0), "2" => Some(1), "3" => Some(2),
+                                "4" => Some(3), "5" => Some(4), "6" => Some(5),
+                                "7" => Some(6), "8" => Some(7), "9" => Some(8),
+                                _ => None,
+                            } {
+                                terminal.update(cx, |p, cx| p.activate_tab_by_index(n, window, cx));
+                                cx.stop_propagation();
+                            }
+                        }
+                        // cmd+shift+] → next tab, cmd+shift+[ → prev tab
+                        if m.platform && m.shift && !m.control && !m.alt {
+                            match key {
+                                "]" => {
+                                    terminal.update(cx, |p, cx| p.next_tab(window, cx));
+                                    cx.stop_propagation();
+                                }
+                                "[" => {
+                                    terminal.update(cx, |p, cx| p.prev_tab(window, cx));
+                                    cx.stop_propagation();
+                                }
+                                _ => {}
+                            }
+                        }
+                        // cmd+w → close active tab
+                        if m.platform && !m.shift && !m.control && !m.alt && key == "w" {
+                            terminal.update(cx, |p, cx| p.close_active_tab(cx));
+                            cx.stop_propagation();
+                        }
+                        // cmd+t → toggle agent picker
+                        if m.platform && !m.shift && !m.control && !m.alt && key == "t" {
+                            terminal.update(cx, |p, cx| {
+                                p.show_agent_menu = !p.show_agent_menu;
+                                p.agent_menu_index = 0;
+                                cx.notify();
+                            });
+                            if terminal.read(cx).show_agent_menu {
+                                terminal.read(cx).agent_menu_focus.focus(window);
+                            }
+                            cx.stop_propagation();
+                        }
+                        // cmd+n → new workspace
+                        if m.platform && !m.shift && !m.control && !m.alt && key == "n" {
+                            app_view.update(cx, |app, cx| {
+                                app.open_new_workspace_dialog(window, cx);
+                            });
+                            cx.stop_propagation();
+                        }
+                        // cmd+, → settings
+                        if m.platform && !m.shift && !m.control && !m.alt && key == "," {
+                            app_view.update(cx, |app, cx| {
+                                if app.settings.is_some() {
+                                    app.close_settings(cx);
+                                } else {
+                                    app.open_settings(window, cx);
+                                }
+                            });
+                            cx.stop_propagation();
+                        }
+                    }
+                });
+                // Store subscription in AppView so it stays alive
+                view.update(cx, |app, _| { app._keystroke_sub = Some(sub); });
+
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )

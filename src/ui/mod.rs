@@ -6,6 +6,7 @@ pub mod dialogs;
 
 pub mod review;
 pub mod settings;
+pub mod setup;
 pub mod sidebar;
 pub mod terminal;
 pub mod theme;

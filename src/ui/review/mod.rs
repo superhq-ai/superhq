@@ -12,6 +12,40 @@ use shuru_sdk::AsyncSandbox;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+/// Patterns always ignored in the review panel, regardless of .gitignore.
+const BUILTIN_IGNORE_PATTERNS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "target/",
+    ".DS_Store",
+    ".next",
+    "dist/",
+    "build/",
+];
+
+/// Build a gitignore matcher that combines .gitignore, global gitignore,
+/// and our built-in ignore patterns.
+fn build_ignore_matcher(host_mount_path: &str) -> ignore::gitignore::Gitignore {
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(host_mount_path);
+    for pattern in BUILTIN_IGNORE_PATTERNS {
+        let _ = builder.add_line(None, pattern);
+    }
+    builder.add(format!("{}/.gitignore", host_mount_path));
+    if let Ok(home) = std::env::var("HOME") {
+        let global = format!("{}/.config/git/ignore", home);
+        if std::path::Path::new(&global).exists() {
+            builder.add(&global);
+        }
+    }
+    builder.build().unwrap_or_else(|_| {
+        let mut b = ignore::gitignore::GitignoreBuilder::new(host_mount_path);
+        let _ = b.add_line(None, ".git");
+        b.build().unwrap()
+    })
+}
+
 /// Cached sidebar state for a workspace.
 struct WorkspaceCache {
     changes: ChangesSnapshot,
@@ -156,6 +190,9 @@ impl SidePanel {
                     let mut cached_files: HashMap<String, changes_tab::ChangedFile> = HashMap::new();
                     let mut cached_diffs: HashMap<String, diff_engine::FileDiff> = HashMap::new();
 
+                    // Build gitignore matcher from host mount
+                    let gitignore = build_ignore_matcher(&host_mount_path);
+
                     loop {
                         let event = match watch.receiver.recv().await {
                             Some(e) => e,
@@ -170,7 +207,8 @@ impl SidePanel {
                         let mut dirty: HashSet<String> = HashSet::new();
                         for p in &raw_paths {
                             if let Some(rel) = p.strip_prefix(&prefix) {
-                                if rel.starts_with(".git/") || rel == ".git" {
+                                let full = std::path::Path::new(&host_mount_path).join(rel);
+                                if gitignore.matched(&full, false).is_ignore() {
                                     continue;
                                 }
                                 dirty.insert(rel.to_string());

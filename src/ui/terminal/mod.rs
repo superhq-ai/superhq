@@ -161,10 +161,12 @@ struct MissingSecretsPrompt {
 pub struct TerminalPanel {
     db: Arc<Database>,
     agents: Vec<Agent>,
-    active_workspace_id: Option<i64>,
+    pub active_workspace_id: Option<i64>,
     sessions: HashMap<i64, WorkspaceSession>,
     tokio_handle: tokio::runtime::Handle,
-    show_agent_menu: bool,
+    pub show_agent_menu: bool,
+    pub agent_menu_index: usize,
+    pub agent_menu_focus: FocusHandle,
     next_tab_id: u64,
     /// Pending close confirmation: (workspace_id, tab_id)
     pending_close: Option<(i64, u64)>,
@@ -174,14 +176,16 @@ pub struct TerminalPanel {
     skip_secret_check: bool,
     /// Callback to open settings panel (avoids action dispatch issues).
     on_open_settings: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
-    /// Callback to open the forward-port dialog. Receives workspace_id.
+    /// Callback to open the ports dialog. Receives workspace_id.
     on_open_port_dialog: Option<Box<dyn Fn(i64, &mut Window, &mut App) + 'static>>,
     /// Reference to the right sidebar for sandbox-ready notifications.
     side_panel: Option<Entity<SidePanel>>,
+    /// Whether to show tab index badges (when Ctrl is held).
+    pub show_tab_badges: bool,
 }
 
 impl TerminalPanel {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<Database>, cx: &mut Context<Self>) -> Self {
         let agents = db.list_agents().unwrap_or_default();
 
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -203,6 +207,8 @@ impl TerminalPanel {
             sessions: HashMap::new(),
             tokio_handle: handle,
             show_agent_menu: false,
+            agent_menu_index: 0,
+            agent_menu_focus: cx.focus_handle(),
             next_tab_id: 1,
             pending_close: None,
             missing_secrets_prompt: None,
@@ -210,6 +216,7 @@ impl TerminalPanel {
             on_open_settings: None,
             on_open_port_dialog: None,
             side_panel: None,
+            show_tab_badges: false,
         }
     }
 
@@ -1001,12 +1008,21 @@ impl TerminalPanel {
                     guest_port: spec.guest_port,
                 });
             }
-            // Expose user-configured port mappings
+            // Port forwarding: sandbox ports accessible on the host
             if let Ok(port_mappings) = db_for_secrets.get_port_mappings(ws_id) {
                 for pm in &port_mappings {
-                    config.expose_host.push(ExposeHostMapping {
+                    config.ports.push(shuru_proto::PortMapping {
                         host_port: pm.host_port,
                         guest_port: pm.guest_port,
+                    });
+                }
+            }
+            // Expose host ports into the sandbox
+            if let Ok(expose_ports) = db_for_secrets.get_expose_host_ports(ws_id) {
+                for ep in &expose_ports {
+                    config.expose_host.push(ExposeHostMapping {
+                        host_port: ep.host_port,
+                        guest_port: ep.guest_port,
                     });
                 }
             }
@@ -1175,6 +1191,22 @@ impl TerminalPanel {
                                                 tab.setup_steps = None;
                                                 tab.setup_error = None;
                                             }
+                                            // Auto-focus the terminal if this is the active tab
+                                            if let Some(active) = session.tabs.get(session.active_tab) {
+                                                if active.tab_id == tab_id {
+                                                    if let Some(ref terminal) = active.terminal {
+                                                        // cx is &mut App here, no window access — defer focus
+                                                        let fh = terminal.read(cx).focus_handle().clone();
+                                                        cx.defer(move |cx| {
+                                                            if let Some(window) = cx.active_window() {
+                                                                window.update(cx, |_, window, _cx| {
+                                                                    fh.focus(window);
+                                                                }).ok();
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            }
                                         }
                                         cx.notify();
                                     }).ok();
@@ -1272,7 +1304,7 @@ impl TerminalPanel {
                         session.tabs.push(TerminalTab {
                             tab_id,
                             label: SharedString::from(label.clone()),
-                            terminal: Some(terminal),
+                            terminal: Some(terminal.clone()),
                             setup_steps: None,
                             setup_error: None,
                             agent_color: None,
@@ -1287,6 +1319,15 @@ impl TerminalPanel {
                         session.active_tab = new_idx;
                         session.tab_scroll.scroll_to_item(session.tabs.len() - 1);
                     }
+                    // Auto-focus the new shell terminal
+                    let fh = terminal.read(cx).focus_handle().clone();
+                    cx.defer(move |cx| {
+                        if let Some(window) = cx.active_window() {
+                            window.update(cx, |_, window, _cx| {
+                                fh.focus(window);
+                            }).ok();
+                        }
+                    });
                     cx.notify();
                 })
                 .ok();
@@ -1507,8 +1548,58 @@ impl TerminalPanel {
         self.force_close_tab(ws_id, tab_id, cx);
     }
 
+    /// Switch to the Nth tab (0-indexed).
+    pub fn activate_tab_by_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let ws_id = match self.active_workspace_id { Some(id) => id, None => return };
+        if let Some(session) = self.sessions.get_mut(&ws_id) {
+            if index >= session.tabs.len() { return; }
+            session.active_tab = index;
+            if let Some(tab) = session.tabs.get(index) {
+                if let Some(ref terminal) = tab.terminal {
+                    terminal.read(cx).focus_handle().focus(window);
+                }
+            }
+            cx.notify();
+        }
+        self.notify_side_panel(ws_id, cx);
+    }
+
+    /// Activate the currently focused agent menu item.
+    fn activate_agent_menu_item(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let running_agents = self.active_agent_tabs();
+        let shell_count = if running_agents.is_empty() { 0 } else { running_agents.len() };
+        let idx = self.agent_menu_index;
+
+        if idx < shell_count {
+            // Shell item
+            let tab_id = running_agents[idx].tab_id;
+            self.open_shell_tab(tab_id, cx);
+        } else {
+            // Agent item
+            let agent_idx = idx - shell_count;
+            if let Some(a) = self.agents.get(agent_idx).cloned() {
+                let color = a.color.as_ref().and_then(|c| t::parse_hex_color(c));
+                let icon = a.icon.clone().map(SharedString::from);
+                self.open_agent_tab(a.id, a.display_name, a.command, color, icon, None, None, cx);
+            }
+        }
+        self.show_agent_menu = false;
+        cx.notify();
+    }
+
+    /// Close the active tab in the current workspace.
+    pub fn close_active_tab(&mut self, cx: &mut Context<Self>) {
+        let ws_id = match self.active_workspace_id { Some(id) => id, None => return };
+        if let Some(session) = self.sessions.get(&ws_id) {
+            if let Some(tab) = session.tabs.get(session.active_tab) {
+                let tab_id = tab.tab_id;
+                self.request_close_tab(ws_id, tab_id, cx);
+            }
+        }
+    }
+
     /// Switch to the next tab.
-    fn next_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn next_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ws_id = match self.active_workspace_id { Some(id) => id, None => return };
         if let Some(session) = self.sessions.get_mut(&ws_id) {
             if session.tabs.is_empty() { return; }
@@ -1523,7 +1614,7 @@ impl TerminalPanel {
     }
 
     /// Switch to the previous tab.
-    fn prev_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn prev_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ws_id = match self.active_workspace_id { Some(id) => id, None => return };
         if let Some(session) = self.sessions.get_mut(&ws_id) {
             if session.tabs.is_empty() { return; }
@@ -1592,6 +1683,7 @@ impl TerminalPanel {
         icon_path: Option<&str>,
         color: Option<Rgba>,
         enabled: bool,
+        focused: bool,
         cx: &mut Context<Self>,
         on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
     ) -> impl IntoElement {
@@ -1609,7 +1701,8 @@ impl TerminalPanel {
             .gap_2()
             .rounded(px(4.0))
             .when(!enabled, |s| s.opacity(0.4))
-            .when(enabled, |s| s.cursor_pointer().hover(|s| s.bg(t::bg_hover())))
+            .when(enabled && !focused, |s| s.cursor_pointer().hover(|s| s.bg(t::bg_hover())))
+            .when(enabled && focused, |s| s.bg(t::bg_hover()).cursor_pointer())
             .when(enabled, |s| {
                 s.on_click(cx.listener(move |this, _, _, cx| {
                     on_click(this, cx);
@@ -1950,6 +2043,18 @@ impl Render for TerminalPanel {
                             }))
                             .child(self.render_tab_icon(&icon_path, color, is_active))
                             .child(display_label)
+                            .when(self.show_tab_badges && i < 9, |el| {
+                                el.child(
+                                    div()
+                                        .px(px(4.0))
+                                        .py(px(0.0))
+                                        .rounded(px(3.0))
+                                        .bg(t::bg_selected())
+                                        .text_color(t::text_muted())
+                                        .text_xs()
+                                        .child(format!("\u{2303}{}", i + 1)),
+                                )
+                            })
                             .child(
                                 div()
                                     .id(("close-tab", i))
@@ -1982,7 +2087,14 @@ impl Render for TerminalPanel {
                         ))
                         .collect();
 
+                    // Count selectable items for keyboard nav
+                    let shell_count = if running_agents.is_empty() { 0 } else { running_agents.len() };
+                    let total_items = shell_count + agents.len();
+                    let focused_idx = self.agent_menu_index.min(total_items.saturating_sub(1));
+
                     let mut menu = div()
+                        .id("agent-menu-popup")
+                        .track_focus(&self.agent_menu_focus)
                         .w(px(200.0))
                         .bg(t::bg_surface())
                         .border_1()
@@ -1996,32 +2108,67 @@ impl Render for TerminalPanel {
                         .occlude()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| {
                             cx.stop_propagation();
-                        });
+                        })
+                        .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                            match event.keystroke.key.as_str() {
+                                "up" => {
+                                    if total_items > 0 {
+                                        this.agent_menu_index = if this.agent_menu_index == 0 {
+                                            total_items - 1
+                                        } else {
+                                            this.agent_menu_index - 1
+                                        };
+                                        cx.notify();
+                                    }
+                                }
+                                "down" => {
+                                    if total_items > 0 {
+                                        this.agent_menu_index = (this.agent_menu_index + 1) % total_items;
+                                        cx.notify();
+                                    }
+                                }
+                                "enter" => {
+                                    this.activate_agent_menu_item(window, cx);
+                                }
+                                "escape" => {
+                                    this.show_agent_menu = false;
+                                    cx.notify();
+                                }
+                                _ => {}
+                            }
+                        }));
 
+                    let mut item_idx: usize = 0;
+
+                    // Shell items
                     if running_agents.is_empty() {
                         menu = menu.child(self.render_menu_item(
                             "menu-shell-disabled", "Shell", Some("icons/agents/shell.svg"),
-                            None, false, cx, |_, _| {},
+                            None, false, false, cx, |_, _| {},
                         ));
                     } else if running_agents.len() == 1 {
                         let agent_tab_id = running_agents[0].tab_id;
+                        let focused = item_idx == focused_idx;
                         menu = menu.child(self.render_menu_item(
                             "menu-shell",
                             &format!("Shell ({})", running_agents[0].name),
                             Some("icons/agents/shell.svg"),
-                            None, true, cx,
+                            None, true, focused, cx,
                             move |this, cx| { this.open_shell_tab(agent_tab_id, cx); },
                         ));
+                        item_idx += 1;
                     } else {
                         for (i, info) in running_agents.iter().enumerate() {
                             let agent_tab_id = info.tab_id;
+                            let focused = item_idx == focused_idx;
                             menu = menu.child(self.render_menu_item(
                                 SharedString::from(format!("menu-shell-{}", i)),
                                 &format!("Shell ({})", info.name),
                                 Some("icons/agents/shell.svg"),
-                                None, true, cx,
+                                None, true, focused, cx,
                                 move |this, cx| { this.open_shell_tab(agent_tab_id, cx); },
                             ));
+                            item_idx += 1;
                         }
                     }
 
@@ -2031,11 +2178,12 @@ impl Render for TerminalPanel {
                         let n = name.clone();
                         let cmd = command.clone();
                         let ic = icon.clone().map(SharedString::from);
+                        let focused = item_idx == focused_idx;
                         menu = menu.child(self.render_menu_item(
                             SharedString::from(format!("menu-agent-{}", name.to_lowercase())),
                             &name,
                             icon.as_deref(),
-                            color, true, cx,
+                            color, true, focused, cx,
                             move |this, cx| {
                                 this.open_agent_tab(
                                     id,
@@ -2049,6 +2197,7 @@ impl Render for TerminalPanel {
                                 );
                             },
                         ));
+                        item_idx += 1;
                     }
 
                     Some(deferred(
@@ -2117,8 +2266,12 @@ impl Render for TerminalPanel {
                                     .text_xs()
                                     .text_color(t::text_ghost())
                                     .hover(|s| s.bg(t::bg_hover()).text_color(t::text_muted()))
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                    .on_click(cx.listener(|this, _, window, cx| {
                                         this.show_agent_menu = !this.show_agent_menu;
+                                        this.agent_menu_index = 0;
+                                        if this.show_agent_menu {
+                                            this.agent_menu_focus.focus(window);
+                                        }
                                         cx.notify();
                                     }))
                                     .child("+"),
@@ -2400,7 +2553,10 @@ impl Render for TerminalPanel {
                     };
                     let port_count = self.db.get_port_mappings(ws_id)
                         .map(|m| m.len())
-                        .unwrap_or(0);
+                        .unwrap_or(0)
+                        + self.db.get_expose_host_ports(ws_id)
+                            .map(|m| m.len())
+                            .unwrap_or(0);
 
                     let status_item = |id: &str, icon_path: &str, label: String| {
                         div()

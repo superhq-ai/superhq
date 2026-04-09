@@ -17,6 +17,7 @@ pub struct WorkspaceItemView {
     pub db: Arc<Database>,
     pub on_refresh: std::rc::Rc<dyn Fn(&mut App) + 'static>,
     pub on_activate: std::rc::Rc<dyn Fn(i64, &mut App) + 'static>,
+    pub badge_index: Option<usize>, // 1-based display number, e.g. Some(1) for ⌘1
     show_menu: bool,
     menu_position: Point<Pixels>,
     hold_button: Option<Entity<HoldButton>>,
@@ -42,6 +43,7 @@ impl WorkspaceItemView {
             db,
             on_refresh,
             on_activate,
+            badge_index: None,
             show_menu: false,
             menu_position: Point::default(),
             hold_button: None,
@@ -212,6 +214,8 @@ impl Render for WorkspaceItemView {
             None
         };
 
+        let badge_index = self.badge_index;
+
         let mut row = div()
             .id(("workspace-item", workspace.id as u64))
             .w_full()
@@ -280,6 +284,23 @@ impl Render for WorkspaceItemView {
                             .child(subtitle),
                     ),
             )
+            .when(badge_index.is_some(), |el| {
+                let n = badge_index.unwrap();
+                el.relative().child(
+                    div()
+                        .absolute()
+                        .right(px(6.0))
+                        .top(px(6.0))
+                        .px(px(5.0))
+                        .py(px(1.0))
+                        .rounded(px(4.0))
+                        .bg(t::bg_selected())
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(t::text_muted())
+                        .child(format!("\u{2318}{}", n)),
+                )
+            })
             .children(menu_el);
 
         // Full-window backdrop to dismiss menu on any click or Esc

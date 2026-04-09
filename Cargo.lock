@@ -3540,27 +3540,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kvm-bindings"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2efe3f1a4437bffe000e6297a593b98184213cd27486776c335f95ab53d48e3a"
-dependencies = [
- "vmm-sys-util",
-]
-
-[[package]]
-name = "kvm-ioctls"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92c2176b91f68903b54ac8c6185bada7d607ca6110998976ff15c032f88a7d39"
-dependencies = [
- "bitflags 2.11.0",
- "kvm-bindings",
- "libc",
- "vmm-sys-util",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3649,15 +3628,6 @@ dependencies = [
  "cc",
  "pkg-config",
  "vcpkg",
-]
-
-[[package]]
-name = "linux-loader"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d379d0089d0fbf4161c35a4fdfd76125923f1a93632c49195f5372b4c0b1472"
-dependencies = [
- "vm-memory",
 ]
 
 [[package]]
@@ -5362,6 +5332,7 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -6051,7 +6022,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shuru-darwin"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -6063,22 +6034,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "shuru-linux"
-version = "0.1.0"
-dependencies = [
- "crossbeam-channel",
- "kvm-bindings",
- "kvm-ioctls",
- "libc",
- "linux-loader",
- "vm-fdt",
- "vm-memory",
- "vmm-sys-util",
-]
-
-[[package]]
 name = "shuru-proto"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -6086,7 +6043,7 @@ dependencies = [
 
 [[package]]
 name = "shuru-proxy"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "boring",
@@ -6118,14 +6075,13 @@ dependencies = [
 
 [[package]]
 name = "shuru-vm"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
  "serde",
  "serde_json",
  "shuru-darwin",
- "shuru-linux",
  "shuru-proto",
  "tracing",
 ]
@@ -6440,6 +6396,7 @@ dependencies = [
  "anyhow",
  "base64",
  "dotenvy",
+ "flate2",
  "flume 0.12.0",
  "futures-util",
  "getrandom 0.2.17",
@@ -6450,6 +6407,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "ignore",
  "parking_lot",
  "portable-pty",
  "reqwest",
@@ -6459,8 +6417,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shuru-proto",
  "shuru-sdk",
  "similar",
+ "tar",
  "tokio",
  "tokio-tungstenite",
  "toml 1.1.0+spec-1.1.0",
@@ -6685,6 +6645,17 @@ dependencies = [
  "core-foundation-sys",
  "libc",
  "objc",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr 1.6.1",
 ]
 
 [[package]]
@@ -7780,33 +7751,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "vm-fdt"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e21282841a059bb62627ce8441c491f09603622cd5a21c43bfedc85a2952f23"
-
-[[package]]
-name = "vm-memory"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a320fc11792e063174402ff444aa3c80363cbf1e31c47b5ef74124406c334ce6"
-dependencies = [
- "libc",
- "thiserror 1.0.69",
- "winapi",
-]
-
-[[package]]
-name = "vmm-sys-util"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d1435039746e20da4f8d507a72ee1b916f7b4b05af7a91c093d2c6561934ede"
-dependencies = [
- "bitflags 1.3.2",
- "libc",
-]
-
-[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8879,6 +8823,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix 1.1.4",
+]
+
+[[package]]
 name = "xcb"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9076,7 +9030,7 @@ dependencies = [
  "libc",
  "pin-project",
  "redox_syscall 0.2.16",
- "xattr",
+ "xattr 0.2.3",
 ]
 
 [[package]]
