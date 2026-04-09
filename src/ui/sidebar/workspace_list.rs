@@ -82,6 +82,28 @@ impl WorkspaceListView {
         cx.notify();
     }
 
+    pub fn next_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let workspaces = self.db.list_workspaces().unwrap_or_default();
+        if workspaces.is_empty() { return; }
+        let current = self.active_workspace_id;
+        let idx = current
+            .and_then(|id| workspaces.iter().position(|w| w.id == id))
+            .map(|i| (i + 1) % workspaces.len())
+            .unwrap_or(0);
+        self.activate_by_index(idx, window, cx);
+    }
+
+    pub fn prev_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let workspaces = self.db.list_workspaces().unwrap_or_default();
+        if workspaces.is_empty() { return; }
+        let current = self.active_workspace_id;
+        let idx = current
+            .and_then(|id| workspaces.iter().position(|w| w.id == id))
+            .map(|i| if i == 0 { workspaces.len() - 1 } else { i - 1 })
+            .unwrap_or(0);
+        self.activate_by_index(idx, window, cx);
+    }
+
     pub fn clear_active(&mut self, cx: &mut Context<Self>) {
         self.active_workspace_id = None;
         self.refresh(cx);

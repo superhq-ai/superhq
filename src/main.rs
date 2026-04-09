@@ -408,8 +408,6 @@ fn main() -> Result<()> {
             KeyBinding::new("cmd-,", OpenSettingsAction, None),
             // Tab navigation
             KeyBinding::new("cmd-w", ui::terminal::CloseActiveTab, Some("Terminal")),
-            KeyBinding::new("cmd-shift-]", ui::terminal::NextTab, Some("Terminal")),
-            KeyBinding::new("cmd-shift-[", ui::terminal::PrevTab, Some("Terminal")),
             // Workspace switching: cmd+1..9
             KeyBinding::new("cmd-1", ActivateWorkspace1, None),
             KeyBinding::new("cmd-2", ActivateWorkspace2, None),
@@ -487,20 +485,6 @@ fn main() -> Result<()> {
                                 cx.stop_propagation();
                             }
                         }
-                        // cmd+shift+] → next tab, cmd+shift+[ → prev tab
-                        if m.platform && m.shift && !m.control && !m.alt {
-                            match key {
-                                "]" => {
-                                    terminal.update(cx, |p, cx| p.next_tab(window, cx));
-                                    cx.stop_propagation();
-                                }
-                                "[" => {
-                                    terminal.update(cx, |p, cx| p.prev_tab(window, cx));
-                                    cx.stop_propagation();
-                                }
-                                _ => {}
-                            }
-                        }
                         // cmd+w → close active tab
                         if m.platform && !m.shift && !m.control && !m.alt && key == "w" {
                             terminal.update(cx, |p, cx| p.close_active_tab(cx));
@@ -517,6 +501,20 @@ fn main() -> Result<()> {
                                 terminal.read(cx).agent_menu_focus.focus(window);
                             }
                             cx.stop_propagation();
+                        }
+                        // ctrl+cmd+] → next workspace, ctrl+cmd+[ → prev workspace
+                        if m.platform && m.control && !m.alt && !m.shift {
+                            match key {
+                                "]" => {
+                                    sidebar.update(cx, |v, cx| v.next_workspace(window, cx));
+                                    cx.stop_propagation();
+                                }
+                                "[" => {
+                                    sidebar.update(cx, |v, cx| v.prev_workspace(window, cx));
+                                    cx.stop_propagation();
+                                }
+                                _ => {}
+                            }
                         }
                         // cmd+n → new workspace
                         if m.platform && !m.shift && !m.control && !m.alt && key == "n" {

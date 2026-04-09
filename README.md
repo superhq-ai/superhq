@@ -55,8 +55,8 @@ For Codex with OAuth, the gateway handles token refresh and forwards authenticat
 | Switch workspace 1-9 | `Cmd+1` - `Cmd+9` |
 | New agent tab | `Cmd+T` |
 | Close tab | `Cmd+W` |
-| Next tab | `Cmd+Shift+]` |
-| Previous tab | `Cmd+Shift+[` |
+| Next workspace | `Ctrl+Cmd+]` |
+| Previous workspace | `Ctrl+Cmd+[` |
 | Switch tab 1-9 | `Ctrl+1` - `Ctrl+9` |
 | Settings | `Cmd+,` |
 

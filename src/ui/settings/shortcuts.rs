@@ -9,8 +9,8 @@ const SHORTCUTS: &[(&str, &str)] = &[
     // Tabs
     ("New agent tab", "\u{2318}T"),
     ("Close tab", "\u{2318}W"),
-    ("Next tab", "\u{2318}\u{21E7}]"),
-    ("Previous tab", "\u{2318}\u{21E7}["),
+    ("Next workspace", "\u{2303}\u{2318}]"),
+    ("Previous workspace", "\u{2303}\u{2318}["),
     ("Switch tab 1\u{2013}9", "\u{2303}1 \u{2013} \u{2303}9"),
     // App
     ("Settings", "\u{2318},"),
