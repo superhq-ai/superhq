@@ -1,5 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
+    <!-- Background gradient (top-to-bottom) -->
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024">
+      <stop offset="0%" stop-color="#262630"/>
+      <stop offset="100%" stop-color="#121218"/>
+    </linearGradient>
+    <!-- Chrome border gradient -->
+    <linearGradient id="border" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024">
+      <stop offset="0%" stop-color="#8c8a86"/>
+      <stop offset="30%" stop-color="#c8c6c0"/>
+      <stop offset="50%" stop-color="#dcdad4"/>
+      <stop offset="70%" stop-color="#b4b2ac"/>
+      <stop offset="100%" stop-color="#504e4a"/>
+    </linearGradient>
     <!-- Chrome sweep for lit faces -->
     <linearGradient id="lit" gradientUnits="userSpaceOnUse" x1="0" y1="240" x2="0" y2="848">
       <stop offset="0%" stop-color="#9a9894"/>
@@ -18,40 +31,31 @@
     </linearGradient>
   </defs>
 
-  <rect width="1024" height="1024" rx="228" ry="228" fill="#1e1e26"/>
+  <!-- Border (slightly larger rounded rect) -->
+  <rect width="1024" height="1024" rx="228" ry="228" fill="url(#border)"/>
+  <!-- Background with gradient -->
+  <rect x="15" y="15" width="994" height="994" rx="213" ry="213" fill="url(#bg)"/>
 
   <!-- 20x20 grid, cell size = 51.2px. "hq" with padding. -->
   <g shape-rendering="crispEdges">
     <!-- h: lit faces -->
-    <!-- h left stem: col 4, rows 6-12 -->
     <rect x="204.8" y="307.2" width="51.2" height="358.4" fill="url(#lit)"/>
-    <!-- h top bridge: cols 7-8, row 8 -->
     <rect x="358.4" y="409.6" width="102.4" height="51.2" fill="url(#lit)"/>
-    <!-- h right stem: col 8, rows 9-12 -->
     <rect x="409.6" y="460.8" width="51.2" height="204.8" fill="url(#lit)"/>
 
     <!-- q: lit faces -->
-    <!-- q top bar: cols 12-15, row 8 -->
     <rect x="614.4" y="409.6" width="204.8" height="51.2" fill="url(#lit)"/>
-    <!-- q left stem: col 11, rows 9-10 (via col 12 shadow overlap) -->
     <rect x="563.2" y="460.8" width="51.2" height="153.6" fill="url(#lit)"/>
-    <!-- q right stem + tail: col 15, rows 9-14 -->
     <rect x="819.2" y="460.8" width="51.2" height="307.2" fill="url(#lit)"/>
 
     <!-- h: shadow faces -->
-    <!-- h left stem shadow: col 5, rows 6-12 -->
     <rect x="256" y="307.2" width="51.2" height="358.4" fill="url(#shd)"/>
-    <!-- h bridge shadow: col 6, row 9 -->
     <rect x="307.2" y="460.8" width="51.2" height="51.2" fill="url(#shd)"/>
-    <!-- h right stem shadow: col 9, rows 9-12 -->
     <rect x="460.8" y="460.8" width="51.2" height="204.8" fill="url(#shd)"/>
 
     <!-- q: shadow faces -->
-    <!-- q left stem shadow: col 12, rows 9-10 -->
     <rect x="614.4" y="460.8" width="51.2" height="153.6" fill="url(#shd)"/>
-    <!-- q right stem shadow: col 16, rows 9-14 -->
     <rect x="870.4" y="460.8" width="51.2" height="307.2" fill="url(#shd)"/>
-    <!-- q bottom bar shadow: cols 12-14, row 12 -->
     <rect x="614.4" y="614.4" width="153.6" height="51.2" fill="url(#shd)"/>
   </g>
 </svg>

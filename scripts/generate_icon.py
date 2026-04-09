@@ -33,7 +33,18 @@ GRID = [
 ]
 GRID_SIZE = 20
 
-BG = (30, 30, 38)  # #1e1e26
+BG_TOP = (38, 38, 48)     # lighter top
+BG_BOTTOM = (18, 18, 24)  # darker bottom
+
+# Chrome border gradient (top-to-bottom metallic sheen)
+BORDER_STOPS = [
+    (0.00, (140, 138, 134)),
+    (0.30, (200, 198, 192)),
+    (0.50, (220, 218, 212)),
+    (0.70, (180, 178, 172)),
+    (1.00, (80,  78,  74)),
+]
+BORDER_WIDTH_RATIO = 0.015  # border thickness as fraction of icon size
 
 # Chrome gradient stops — vertical specular sweep (matches SVG)
 # Gradient spans SVG y=240..848, mapped to pixel coordinates per render size.
@@ -74,10 +85,20 @@ def lerp_gradient(stops, t):
     return stops[-1][1]
 
 
+def bg_color(py, size):
+    """Vertical gradient background."""
+    t = py / max(size - 1, 1)
+    return (
+        int(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t),
+        int(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t),
+        int(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t),
+    )
+
+
 def pixel_color(grid_val, py, size):
     """Get color for a pixel based on grid value and y position."""
     if grid_val == 0:
-        return BG
+        return bg_color(py, size)
     # Map pixel y to SVG coordinate space (1024-unit viewBox)
     svg_y = (py + 0.5) / size * 1024.0
     # Gradient spans SVG y=240..848
@@ -104,30 +125,48 @@ def make_png(width, height, pixels_rgba):
     return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def in_squircle(px, py, size):
-    """Check if pixel (px, py) is inside a macOS-style rounded rect."""
+def squircle_distance(px, py, size):
+    """Distance from edge of squircle. >0 = inside, <0 = outside."""
     r = size * CORNER_RATIO
+    # In the straight portions
     if px >= r and px <= size - r:
-        return True
+        return min(py, size - py)
     if py >= r and py <= size - r:
-        return True
+        return min(px, size - px)
+    # In corner regions — distance from corner circle
     cx = r if px < r else size - r
     cy = r if py < r else size - r
     dx = px - cx
     dy = py - cy
-    return dx * dx + dy * dy <= r * r
+    return r - (dx * dx + dy * dy) ** 0.5
 
 
 def render(size):
-    """Render the grid scaled up to `size` x `size` with chrome gradients."""
+    """Render the grid scaled up to `size` x `size` with chrome gradients and border."""
     scale = size / GRID_SIZE
+    border_w = max(1.0, size * BORDER_WIDTH_RATIO)
     buf = bytearray(size * size * 4)
 
     for py in range(size):
         for px in range(size):
             idx = (py * size + px) * 4
-            if not in_squircle(px + 0.5, py + 0.5, size):
+            dist = squircle_distance(px + 0.5, py + 0.5, size)
+
+            if dist < -0.5:
+                # Outside
                 buf[idx : idx + 4] = b"\x00\x00\x00\x00"
+                continue
+
+            if dist < border_w:
+                # Border region — chrome gradient
+                t = py / max(size - 1, 1)
+                r, g, b = lerp_gradient(BORDER_STOPS, t)
+                # Anti-alias the outer edge
+                alpha = min(255, int((dist + 0.5) * 255))
+                buf[idx] = r
+                buf[idx + 1] = g
+                buf[idx + 2] = b
+                buf[idx + 3] = max(0, alpha)
                 continue
 
             gx = min(int(px / scale), GRID_SIZE - 1)
