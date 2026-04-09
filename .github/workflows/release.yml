@@ -1,11 +1,9 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g. 0.1.0)"
-        required: true
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -32,14 +30,17 @@ jobs:
 
       - name: Package app
         env:
-          VERSION: ${{ inputs.version }}
-        run: ./scripts/package.sh
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          export VERSION
+          ./scripts/package.sh
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
           name: dmg
-          path: target/SuperHQ-${{ inputs.version }}.dmg
+          path: target/SuperHQ-*.dmg
           retention-days: 1
 
   release:
@@ -54,7 +55,5 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
           generate_release_notes: true
           files: artifacts/*
