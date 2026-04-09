@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <!-- Chrome sweep for lit faces — specular band in the middle -->
+    <!-- Chrome sweep for lit faces -->
     <linearGradient id="lit" gradientUnits="userSpaceOnUse" x1="0" y1="240" x2="0" y2="848">
       <stop offset="0%" stop-color="#9a9894"/>
       <stop offset="35%" stop-color="#e0ded8"/>
@@ -20,21 +20,38 @@
 
   <rect width="1024" height="1024" rx="228" ry="228" fill="#1e1e26"/>
 
+  <!-- 20x20 grid, cell size = 51.2px. "hq" with padding. -->
   <g shape-rendering="crispEdges">
-    <!-- Lit faces (left/top) -->
-    <rect x="128" y="256" width="64" height="448" fill="url(#lit)"/>
-    <rect x="320" y="384" width="128" height="64" fill="url(#lit)"/>
-    <rect x="384" y="448" width="64" height="256" fill="url(#lit)"/>
-    <rect x="640" y="384" width="256" height="64" fill="url(#lit)"/>
-    <rect x="576" y="448" width="64" height="192" fill="url(#lit)"/>
-    <rect x="832" y="448" width="64" height="384" fill="url(#lit)"/>
+    <!-- h: lit faces -->
+    <!-- h left stem: col 4, rows 6-12 -->
+    <rect x="204.8" y="307.2" width="51.2" height="358.4" fill="url(#lit)"/>
+    <!-- h top bridge: cols 7-8, row 8 -->
+    <rect x="358.4" y="409.6" width="102.4" height="51.2" fill="url(#lit)"/>
+    <!-- h right stem: col 8, rows 9-12 -->
+    <rect x="409.6" y="460.8" width="51.2" height="204.8" fill="url(#lit)"/>
 
-    <!-- Shadow faces (right/bottom) -->
-    <rect x="192" y="256" width="64" height="448" fill="url(#shd)"/>
-    <rect x="256" y="448" width="64" height="64" fill="url(#shd)"/>
-    <rect x="448" y="448" width="64" height="256" fill="url(#shd)"/>
-    <rect x="640" y="448" width="64" height="192" fill="url(#shd)"/>
-    <rect x="896" y="448" width="64" height="384" fill="url(#shd)"/>
-    <rect x="640" y="640" width="192" height="64" fill="url(#shd)"/>
+    <!-- q: lit faces -->
+    <!-- q top bar: cols 12-15, row 8 -->
+    <rect x="614.4" y="409.6" width="204.8" height="51.2" fill="url(#lit)"/>
+    <!-- q left stem: col 11, rows 9-10 (via col 12 shadow overlap) -->
+    <rect x="563.2" y="460.8" width="51.2" height="153.6" fill="url(#lit)"/>
+    <!-- q right stem + tail: col 15, rows 9-14 -->
+    <rect x="819.2" y="460.8" width="51.2" height="307.2" fill="url(#lit)"/>
+
+    <!-- h: shadow faces -->
+    <!-- h left stem shadow: col 5, rows 6-12 -->
+    <rect x="256" y="307.2" width="51.2" height="358.4" fill="url(#shd)"/>
+    <!-- h bridge shadow: col 6, row 9 -->
+    <rect x="307.2" y="460.8" width="51.2" height="51.2" fill="url(#shd)"/>
+    <!-- h right stem shadow: col 9, rows 9-12 -->
+    <rect x="460.8" y="460.8" width="51.2" height="204.8" fill="url(#shd)"/>
+
+    <!-- q: shadow faces -->
+    <!-- q left stem shadow: col 12, rows 9-10 -->
+    <rect x="614.4" y="460.8" width="51.2" height="153.6" fill="url(#shd)"/>
+    <!-- q right stem shadow: col 16, rows 9-14 -->
+    <rect x="870.4" y="460.8" width="51.2" height="307.2" fill="url(#shd)"/>
+    <!-- q bottom bar shadow: cols 12-14, row 12 -->
+    <rect x="614.4" y="614.4" width="153.6" height="51.2" fill="url(#shd)"/>
   </g>
 </svg>
