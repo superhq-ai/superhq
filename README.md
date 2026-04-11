@@ -4,7 +4,7 @@ A sandboxed AI agent orchestration platform built with Rust and [GPUI](https://g
 
 > **Warning:** This is a very early alpha, largely vibe-coded. Expect rough edges, missing features, and breaking changes. Not ready for production use.
 
-![SuperHQ](assets/screenshot.png)
+![SuperHQ](website/public/screenshot.png)
 
 ## Install
 
