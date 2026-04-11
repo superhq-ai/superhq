@@ -3,5 +3,8 @@ sandbox_mode = "danger-full-access"
 approval_policy = "never"
 openai_base_url = "{{OPENAI_BASE_URL}}"
 
+[features]
+codex_hooks = true
+
 [projects."/workspace"]
 trust_level = "trusted"

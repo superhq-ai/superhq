@@ -43,15 +43,22 @@ pub enum AgentStatus {
 }
 
 impl AgentStatus {
-    /// Short display text for sidebar status, including agent name.
-    pub fn display_text(&self, agent_name: &str) -> Option<String> {
-        let name = if agent_name.is_empty() { "Agent" } else { agent_name };
+    /// Short display text for sidebar status, including agent names.
+    pub fn display_text(&self, names: &[String]) -> Option<String> {
+        let label = match names.len() {
+            0 => "Agent".to_string(),
+            1 => names[0].clone(),
+            _ => names.join(", "),
+        };
         match self {
             Self::Unknown => None,
-            Self::Running { .. } => Some(format!("{name} is running")),
+            Self::Running { .. } if names.len() > 1 => Some(format!("{label} are running")),
+            Self::Running { .. } => Some(format!("{label} is running")),
             Self::NeedsInput { message: Some(m) } if !m.is_empty() => Some(m.clone()),
-            Self::NeedsInput { .. } => Some(format!("{name} is waiting for input")),
-            Self::Idle => Some(format!("{name} is ready")),
+            Self::NeedsInput { .. } if names.len() > 1 => Some(format!("{label} need input")),
+            Self::NeedsInput { .. } => Some(format!("{label} is waiting for input")),
+            Self::Idle if names.len() > 1 => Some(format!("{label} are ready")),
+            Self::Idle => Some(format!("{label} is ready")),
         }
     }
 

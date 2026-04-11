@@ -75,19 +75,31 @@ impl TerminalPanel {
     }
 
     /// Get the highest-priority agent status across all tabs in a workspace,
-    /// along with the agent name for display.
-    pub fn workspace_agent_status(&self, ws_id: i64, cx: &App) -> (String, super::session::AgentStatus) {
+    /// along with the names of agents at that priority level.
+    pub fn workspace_agent_status(&self, ws_id: i64, cx: &App) -> (Vec<String>, super::session::AgentStatus) {
         self.sessions.get(&ws_id).map(|session| {
-            session.read(cx).tabs.iter()
-                .max_by_key(|tab| tab.agent_status.priority())
-                .map(|tab| {
-                    let name = match &tab.kind {
-                        super::session::TabKind::Agent { agent_name, .. } => agent_name.clone(),
-                        _ => String::new(),
-                    };
-                    (name, tab.agent_status.clone())
+            let tabs = &session.read(cx).tabs;
+            let max_priority = tabs.iter()
+                .map(|t| t.agent_status.priority())
+                .max()
+                .unwrap_or(0);
+            if max_priority == 0 {
+                return (vec![], super::session::AgentStatus::Unknown);
+            }
+            let names: Vec<String> = tabs.iter()
+                .filter(|t| t.agent_status.priority() == max_priority)
+                .filter_map(|t| match &t.kind {
+                    super::session::TabKind::Agent { agent_name, .. } if !agent_name.is_empty() => {
+                        Some(agent_name.clone())
+                    }
+                    _ => None,
                 })
-                .unwrap_or_default()
+                .collect();
+            let status = tabs.iter()
+                .find(|t| t.agent_status.priority() == max_priority)
+                .map(|t| t.agent_status.clone())
+                .unwrap_or_default();
+            (names, status)
         }).unwrap_or_default()
     }
 }

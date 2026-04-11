@@ -89,17 +89,15 @@ pub async fn auth_setup(sandbox: &AsyncSandbox, vars: &HashMap<String, String>) 
     let config_path = format!("{home}/.codex/config.toml");
     write_config(sandbox, &config_path, config.as_bytes()).await;
 
-    // Lifecycle hooks (same schema as Claude Code, but async not supported)
+    // Lifecycle hooks (same schema as Claude Code)
     let hooks = serde_json::json!({
         "hooks": {
-            "SessionStart": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook session_start" }] }],
-            "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook prompt_submit" }] }],
-            "PreToolUse": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook pre_tool_use" }] }],
-            "Stop": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook stop" }] }],
+            "SessionStart": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/superhq-claude-hook session_start" }] }],
+            "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/superhq-claude-hook prompt_submit" }] }],
+            "PreToolUse": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/superhq-claude-hook pre_tool_use" }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/superhq-claude-hook stop" }] }],
         }
     });
-    // Write to both user-level and project-level config
-    let hooks_bytes = hooks.to_string();
-    write_config(sandbox, &format!("{home}/.codex/hooks.json"), hooks_bytes.as_bytes()).await;
-    write_config(sandbox, "/workspace/.codex/hooks.json", hooks_bytes.as_bytes()).await;
+    let hooks_path = format!("{home}/.codex/hooks.json");
+    write_config(sandbox, &hooks_path, hooks.to_string().as_bytes()).await;
 }

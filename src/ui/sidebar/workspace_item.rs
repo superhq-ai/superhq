@@ -18,7 +18,7 @@ pub struct WorkspaceItemView {
     pub on_refresh: std::rc::Rc<dyn Fn(&mut App) + 'static>,
     pub on_activate: std::rc::Rc<dyn Fn(i64, &mut App) + 'static>,
     pub badge_index: Option<usize>, // 1-based display number, e.g. Some(1) for ⌘1
-    pub agent_name: String,
+    pub agent_names: Vec<String>,
     pub agent_status: crate::ui::terminal::session::AgentStatus,
     show_menu: bool,
     menu_position: Point<Pixels>,
@@ -46,7 +46,7 @@ impl WorkspaceItemView {
             on_refresh,
             on_activate,
             badge_index: None,
-            agent_name: String::new(),
+            agent_names: Vec::new(),
             agent_status: Default::default(),
             show_menu: false,
             menu_position: Point::default(),
@@ -289,7 +289,7 @@ impl Render for WorkspaceItemView {
                             .line_height(px(14.0))
                             .child(subtitle),
                     )
-                    .when_some(self.agent_status.display_text(&self.agent_name), |el, status_text| {
+                    .when_some(self.agent_status.display_text(&self.agent_names), |el, status_text| {
                         use crate::ui::terminal::session::AgentStatus;
                         let color = match &self.agent_status {
                             AgentStatus::NeedsInput { .. } => t::agent_needs_input(),

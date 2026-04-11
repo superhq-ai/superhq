@@ -446,7 +446,7 @@ impl super::TerminalPanel {
                 auth_gateway_handle.as_ref(),
             );
 
-            let sandbox = match svc::boot_with_retry(config, 3).await {
+            let sandbox = match tokio_handle.spawn(svc::boot_with_retry(config, 3)).await.unwrap() {
                 Ok(s) => s,
                 Err(last_err) => {
                     let step_idx = start_ws_step;

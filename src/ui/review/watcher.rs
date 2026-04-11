@@ -41,6 +41,7 @@ fn build_ignore_matcher(host_mount_path: Option<&str>) -> ignore::gitignore::Git
     })
 }
 
+#[derive(Clone)]
 pub struct DiffResult {
     pub dirty_paths: HashSet<String>,
     pub updated_files: HashMap<String, ChangedFile>,
