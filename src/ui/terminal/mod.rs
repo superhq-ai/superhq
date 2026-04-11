@@ -63,6 +63,7 @@ impl Render for TerminalPanel {
                     color: Option<Rgba>,
                     tab_id: u64,
                     display_label: SharedString,
+                    agent_status: session::AgentStatus,
                 }
                 let tab_snapshots: Vec<TabSnapshot> = s.tabs.iter().enumerate().map(|(i, tab)| {
                     let is_setup = tab.is_setting_up();
@@ -78,6 +79,7 @@ impl Render for TerminalPanel {
                         } else {
                             tab.label.clone()
                         },
+                        agent_status: tab.agent_status.clone(),
                     }
                 }).collect();
 
@@ -165,6 +167,21 @@ impl Render for TerminalPanel {
                             }))
                             .child(self.render_tab_icon(&icon_path, color, is_active))
                             .child(display_label)
+                            .when_some({
+                                match &snap.agent_status {
+                                    session::AgentStatus::Running { .. } => Some(t::agent_running()),
+                                    session::AgentStatus::NeedsInput { .. } => Some(t::agent_needs_input()),
+                                    _ => None,
+                                }
+                            }, |el, dot_color| {
+                                el.child(
+                                    div()
+                                        .size(px(6.0))
+                                        .rounded_full()
+                                        .flex_shrink_0()
+                                        .bg(dot_color),
+                                )
+                            })
                             .when(self.show_tab_badges && i < 9, |el| {
                                 el.child(
                                     div()

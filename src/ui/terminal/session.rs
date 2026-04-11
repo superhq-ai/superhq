@@ -4,6 +4,7 @@ use shuru_sdk::AsyncSandbox;
 use std::sync::Arc;
 
 use crate::sandbox::auth_gateway::AuthGateway;
+use crate::sandbox::event_watcher::AgentEventService;
 
 // --- Setup progress types ---
 
@@ -27,6 +28,41 @@ impl SetupStep {
     }
     pub fn active(label: impl Into<SharedString>) -> Self {
         Self { label: label.into(), status: StepStatus::Active }
+    }
+}
+
+// --- Agent status (from lifecycle hooks) ---
+
+#[derive(Clone, Debug, Default)]
+pub enum AgentStatus {
+    #[default]
+    Unknown,
+    Running { tool: Option<String> },
+    NeedsInput { message: Option<String> },
+    Idle,
+}
+
+impl AgentStatus {
+    /// Short display text for sidebar status, including agent name.
+    pub fn display_text(&self, agent_name: &str) -> Option<String> {
+        let name = if agent_name.is_empty() { "Agent" } else { agent_name };
+        match self {
+            Self::Unknown => None,
+            Self::Running { .. } => Some(format!("{name} is running")),
+            Self::NeedsInput { message: Some(m) } if !m.is_empty() => Some(m.clone()),
+            Self::NeedsInput { .. } => Some(format!("{name} is waiting for input")),
+            Self::Idle => Some(format!("{name} is ready")),
+        }
+    }
+
+    /// Priority for aggregating across tabs (higher = more important).
+    pub fn priority(&self) -> u8 {
+        match self {
+            Self::Unknown => 0,
+            Self::Idle => 1,
+            Self::Running { .. } => 2,
+            Self::NeedsInput { .. } => 3,
+        }
     }
 }
 
@@ -54,6 +90,8 @@ pub struct TerminalTab {
     pub agent_color: Option<Rgba>,
     pub icon_path: Option<SharedString>,
     pub kind: TabKind,
+    pub agent_status: AgentStatus,
+    pub event_service: Option<AgentEventService>,
     pub checkpointing: bool,
     pub checkpoint_name: Option<String>,
     pub tab_db_id: Option<i64>,

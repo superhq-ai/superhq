@@ -1,4 +1,6 @@
-use super::{secret_entry, AgentConfig, InstallStep, NODE_INSTALL_STEP};
+use super::{home, secret_entry, write_config, AgentConfig, InstallStep, NODE_INSTALL_STEP};
+use shuru_sdk::AsyncSandbox;
+use std::collections::HashMap;
 
 pub fn config() -> AgentConfig {
     AgentConfig {
@@ -30,4 +32,23 @@ pub fn config() -> AgentConfig {
         )],
         auth_gateway: None,
     }
+}
+
+pub async fn auth_setup(sandbox: &AsyncSandbox, vars: &HashMap<String, String>) {
+    let home = home(vars);
+
+    // Inject lifecycle hooks so Claude reports state back via superhq-hook
+    let settings = serde_json::json!({
+        "hooks": {
+            "PreToolUse": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook pre_tool_use", "async": true }] }],
+            "Notification": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook notification", "async": true }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook stop", "async": true }] }],
+            "SessionStart": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook session_start", "async": true }] }],
+            "SessionEnd": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook session_end", "async": true }] }],
+            "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "superhq-claude-hook prompt_submit", "async": true }] }],
+        }
+    });
+
+    let settings_path = format!("{home}/.claude/settings.json");
+    write_config(sandbox, &settings_path, settings.to_string().as_bytes()).await;
 }

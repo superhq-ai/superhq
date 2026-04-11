@@ -73,4 +73,21 @@ impl TerminalPanel {
             show_tab_badges: false,
         }
     }
+
+    /// Get the highest-priority agent status across all tabs in a workspace,
+    /// along with the agent name for display.
+    pub fn workspace_agent_status(&self, ws_id: i64, cx: &App) -> (String, super::session::AgentStatus) {
+        self.sessions.get(&ws_id).map(|session| {
+            session.read(cx).tabs.iter()
+                .max_by_key(|tab| tab.agent_status.priority())
+                .map(|tab| {
+                    let name = match &tab.kind {
+                        super::session::TabKind::Agent { agent_name, .. } => agent_name.clone(),
+                        _ => String::new(),
+                    };
+                    (name, tab.agent_status.clone())
+                })
+                .unwrap_or_default()
+        }).unwrap_or_default()
+    }
 }

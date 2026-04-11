@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180" fill="none">
+  <!-- Label -->
+  <text x="28" y="30" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">AGENT'S VIEW</text>
+
+  <!-- Visible /workspace -->
+  <rect x="22" y="40" width="180" height="78" rx="3" stroke="#a8a6a0" stroke-width="1"/>
+  <text x="32" y="60" font-family="monospace" font-size="11" fill="#eceae4">/workspace/</text>
+  <text x="42" y="78" font-family="monospace" font-size="10" fill="#a8a6a0">├── src/</text>
+  <text x="42" y="92" font-family="monospace" font-size="10" fill="#a8a6a0">├── Cargo.toml</text>
+  <text x="42" y="106" font-family="monospace" font-size="10" fill="#a8a6a0">└── README.md</text>
+
+  <!-- Hidden host paths (dashed, faded) -->
+  <g opacity="0.35">
+    <rect x="218" y="40" width="160" height="78" rx="3" stroke="#6a6864" stroke-width="1" stroke-dasharray="3 4"/>
+    <text x="228" y="60" font-family="monospace" font-size="10" fill="#6a6864">~/.ssh/id_rsa</text>
+    <line x1="228" y1="56" x2="320" y2="56" stroke="#6a6864" stroke-width="0.8"/>
+
+    <text x="228" y="80" font-family="monospace" font-size="10" fill="#6a6864">~/.aws/credentials</text>
+    <line x1="228" y1="76" x2="340" y2="76" stroke="#6a6864" stroke-width="0.8"/>
+
+    <text x="228" y="100" font-family="monospace" font-size="10" fill="#6a6864">~/Documents/</text>
+    <line x1="228" y1="96" x2="310" y2="96" stroke="#6a6864" stroke-width="0.8"/>
+  </g>
+
+  <!-- "HIDDEN" badge -->
+  <rect x="246" y="124" width="104" height="22" rx="2" stroke="#6a6864" stroke-width="1" stroke-dasharray="2 3">
+    <animate attributeName="stroke-dashoffset" values="0;-10" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="298" y="139" text-anchor="middle" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">HIDDEN ON HOST</text>
+
+  <!-- Visible badge -->
+  <text x="112" y="137" text-anchor="middle" font-family="monospace" font-size="9" fill="#a8a6a0" letter-spacing="1.2">VISIBLE</text>
+
+  <!-- Footer -->
+  <text x="200" y="165" text-anchor="middle" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">VM ISOLATION · NOTHING LEAKS IN</text>
+</svg>

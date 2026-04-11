@@ -18,6 +18,8 @@ pub struct WorkspaceItemView {
     pub on_refresh: std::rc::Rc<dyn Fn(&mut App) + 'static>,
     pub on_activate: std::rc::Rc<dyn Fn(i64, &mut App) + 'static>,
     pub badge_index: Option<usize>, // 1-based display number, e.g. Some(1) for ⌘1
+    pub agent_name: String,
+    pub agent_status: crate::ui::terminal::session::AgentStatus,
     show_menu: bool,
     menu_position: Point<Pixels>,
     hold_button: Option<Entity<HoldButton>>,
@@ -44,6 +46,8 @@ impl WorkspaceItemView {
             on_refresh,
             on_activate,
             badge_index: None,
+            agent_name: String::new(),
+            agent_status: Default::default(),
             show_menu: false,
             menu_position: Point::default(),
             hold_button: None,
@@ -240,14 +244,35 @@ impl Render for WorkspaceItemView {
                             .flex()
                             .items_center()
                             .gap_1()
-                            .child(
+                            .child({
+                                use crate::ui::terminal::session::AgentStatus;
+                                let dot_color = match &self.agent_status {
+                                    AgentStatus::Running { .. } => Some(t::agent_running()),
+                                    AgentStatus::NeedsInput { .. } => Some(t::agent_needs_input()),
+                                    AgentStatus::Idle | AgentStatus::Unknown => None,
+                                };
                                 div()
-                                    .text_xs()
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(if is_active { t::text_primary() } else { t::text_secondary() })
-                                    .overflow_hidden()
-                                    .child(self.workspace.name.clone()),
-                            )
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(5.0))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(if is_active { t::text_primary() } else { t::text_secondary() })
+                                            .overflow_hidden()
+                                            .child(self.workspace.name.clone()),
+                                    )
+                                    .when_some(dot_color, |el, c| {
+                                        el.child(
+                                            div()
+                                                .size(px(6.0))
+                                                .rounded_full()
+                                                .flex_shrink_0()
+                                                .bg(c),
+                                        )
+                                    })
+                            })
                             .children(diff_label.map(|label| {
                                 div()
                                     .ml_auto()
@@ -263,7 +288,23 @@ impl Render for WorkspaceItemView {
                             .overflow_hidden()
                             .line_height(px(14.0))
                             .child(subtitle),
-                    ),
+                    )
+                    .when_some(self.agent_status.display_text(&self.agent_name), |el, status_text| {
+                        use crate::ui::terminal::session::AgentStatus;
+                        let color = match &self.agent_status {
+                            AgentStatus::NeedsInput { .. } => t::agent_needs_input(),
+                            AgentStatus::Running { .. } => t::agent_running(),
+                            _ => t::text_ghost(),
+                        };
+                        el.child(
+                            div()
+                                .text_xs()
+                                .text_color(color)
+                                .overflow_hidden()
+                                .line_height(px(14.0))
+                                .child(status_text.to_string()),
+                        )
+                    }),
             )
             .when(badge_index.is_some(), |el| {
                 let n = badge_index.unwrap();

@@ -133,6 +133,7 @@ pub async fn run_auth_setup(
     vars: &HashMap<String, String>,
 ) {
     match agent_name {
+        "claude" => claude::auth_setup(sandbox, vars).await,
         "codex" => codex::auth_setup(sandbox, vars).await,
         "pi" => pi::auth_setup(sandbox, vars).await,
         _ => {}

@@ -35,6 +35,22 @@ impl WorkspaceListView {
         let on_workspace_activated = std::rc::Rc::new(on_workspace_activated);
         let workspace_views =
             Self::build_views(&db, &workspaces, &terminal_panel, &review_panel, active_workspace_id, cx);
+
+        // Observe terminal panel — when agent status changes, update sidebar dots
+        cx.observe(&terminal_panel, |this: &mut Self, panel, cx| {
+            let workspaces = this.db.list_workspaces().unwrap_or_default();
+            for (i, ws) in workspaces.iter().enumerate() {
+                let (name, status) = panel.read(cx).workspace_agent_status(ws.id, cx);
+                if let Some(view) = this.workspace_views.get(i) {
+                    view.update(cx, |item, _| {
+                        item.agent_name = name;
+                        item.agent_status = status;
+                    });
+                }
+            }
+            cx.notify();
+        }).detach();
+
         Self {
             db,
             workspace_views,
@@ -165,16 +181,23 @@ impl WorkspaceListView {
                     .cloned_from_id
                     .and_then(|id| db.get_cloned_from_name(id).ok().flatten());
                 let is_active = active_workspace_id == Some(ws.id);
-                cx.new(|_| WorkspaceItemView::new(
-                    ws.clone(),
-                    cloned_from_name,
-                    terminal_panel.clone(),
-                    review_panel.clone(),
-                    is_active,
-                    db.clone(),
-                    on_refresh.clone(),
-                    on_activate.clone(),
-                ))
+                let (agent_name, agent_status) = terminal_panel.read(cx)
+                    .workspace_agent_status(ws.id, cx);
+                cx.new(|_| {
+                    let mut item = WorkspaceItemView::new(
+                        ws.clone(),
+                        cloned_from_name,
+                        terminal_panel.clone(),
+                        review_panel.clone(),
+                        is_active,
+                        db.clone(),
+                        on_refresh.clone(),
+                        on_activate.clone(),
+                    );
+                    item.agent_name = agent_name;
+                    item.agent_status = agent_status;
+                    item
+                })
             })
             .collect()
     }

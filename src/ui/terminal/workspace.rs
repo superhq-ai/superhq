@@ -3,7 +3,7 @@ use shuru_sdk::AsyncSandbox;
 use std::sync::Arc;
 
 use super::panel::MissingSecretsPrompt;
-use super::session::{self, SetupStep, TabKind, TerminalTab, WorkspaceSession};
+use super::session::{self, AgentStatus, SetupStep, TabKind, TerminalTab, WorkspaceSession};
 use crate::agents;
 use crate::db::{Agent, Workspace};
 use crate::sandbox::agent_setup;
@@ -183,6 +183,8 @@ impl super::TerminalPanel {
                     sandbox: None,
                     auth_gateway: None,
                 },
+                agent_status: AgentStatus::Unknown,
+                event_service: None,
                 checkpointing: false,
                 checkpoint_name: saved.checkpoint_name.clone(),
                 tab_db_id: Some(saved.id),
@@ -307,6 +309,8 @@ impl super::TerminalPanel {
                         sandbox: None,
                         auth_gateway: None,
                     },
+                    agent_status: AgentStatus::Unknown,
+                    event_service: None,
                     checkpointing: false,
                     checkpoint_name: None,
                     tab_db_id: None,

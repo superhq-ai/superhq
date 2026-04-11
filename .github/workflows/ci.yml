@@ -3,8 +3,16 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "website/**"
+      - ".github/workflows/deploy-website.yml"
+      - "README.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "website/**"
+      - ".github/workflows/deploy-website.yml"
+      - "README.md"
 
 env:
   CARGO_TERM_COLOR: always

@@ -31,6 +31,9 @@ pub async fn run_auth_setup(
     let mut vars = sandbox_env;
     vars.extend(gateway_env.iter().map(|(k, v)| (k.clone(), v.clone())));
 
+    // Write lifecycle hook scripts
+    write_hook_scripts(sandbox).await;
+
     // Dispatch to agent-specific auth setup
     agents::run_auth_setup(&agent.name, sandbox, &vars).await;
 
@@ -62,4 +65,85 @@ pub async fn run_auth_setup(
 
 fn write_export(lines: &mut String, k: &str, v: &str) {
     lines.push_str(&format!("export {}='{}'\n", k, v.replace('\'', "'\\''")));
+}
+
+/// Write the generic lifecycle hook script and Claude-specific wrapper.
+async fn write_hook_scripts(sandbox: &AsyncSandbox) {
+    // Create events directory
+    let _ = sandbox.exec_in("sh", "mkdir -p /root/.superhq").await;
+
+    // Generic hook script: appends a JSONL line to events.jsonl
+    let superhq_hook = r#"#!/bin/bash
+EVENT="$1"; shift
+TOOL="" TITLE="" MESSAGE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tool)    TOOL="$2"; shift 2 ;;
+    --title)   TITLE="$2"; shift 2 ;;
+    --message) MESSAGE="$2"; shift 2 ;;
+    *)         shift ;;
+  esac
+done
+TS=$(date +%s)
+LINE="{\"event\":\"${EVENT}\",\"ts\":${TS}"
+[ -n "$TOOL" ]    && LINE="${LINE},\"tool\":\"${TOOL}\""
+[ -n "$TITLE" ]   && LINE="${LINE},\"title\":\"${TITLE}\""
+[ -n "$MESSAGE" ] && LINE="${LINE},\"message\":\"${MESSAGE}\""
+LINE="${LINE}}"
+echo "$LINE" >> /root/.superhq/events.jsonl
+"#;
+
+    // Claude-specific wrapper: reads JSON from stdin and forwards to superhq-hook
+    let claude_hook = r#"#!/bin/bash
+HOOK="$1"
+INPUT=$(cat)
+case "$HOOK" in
+  pre_tool_use)
+    TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+    exec superhq-hook running --tool "$TOOL"
+    ;;
+  notification)
+    TITLE=$(echo "$INPUT" | jq -r '.title // empty' 2>/dev/null)
+    MSG=$(echo "$INPUT" | jq -r '.message // empty' 2>/dev/null)
+    exec superhq-hook needs_input --title "$TITLE" --message "$MSG"
+    ;;
+  stop)
+    exec superhq-hook idle
+    ;;
+  session_start)
+    exec superhq-hook session_start
+    ;;
+  session_end)
+    exec superhq-hook session_end
+    ;;
+  prompt_submit)
+    exec superhq-hook running
+    ;;
+esac
+"#;
+
+    if let Err(e) = sandbox
+        .write_file("/usr/local/bin/superhq-hook", superhq_hook.as_bytes())
+        .await
+    {
+        eprintln!("[hook_scripts] failed to write superhq-hook: {e}");
+        return;
+    }
+    let _ = sandbox
+        .exec_in("sh", "chmod +x /usr/local/bin/superhq-hook")
+        .await;
+
+    if let Err(e) = sandbox
+        .write_file(
+            "/usr/local/bin/superhq-claude-hook",
+            claude_hook.as_bytes(),
+        )
+        .await
+    {
+        eprintln!("[hook_scripts] failed to write superhq-claude-hook: {e}");
+        return;
+    }
+    let _ = sandbox
+        .exec_in("sh", "chmod +x /usr/local/bin/superhq-claude-hook")
+        .await;
 }

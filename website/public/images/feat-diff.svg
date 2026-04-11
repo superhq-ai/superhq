@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180" fill="none">
+  <!-- File label -->
+  <text x="28" y="30" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">SRC/MAIN.RS</text>
+
+  <!-- Hunk header -->
+  <text x="28" y="52" font-family="monospace" font-size="11" fill="#6a6864">@@ -1,4 +1,4 @@</text>
+
+  <!-- Context -->
+  <text x="28" y="72" font-family="monospace" font-size="11" fill="#6a6864">  fn main() {</text>
+
+  <!-- Removed -->
+  <rect x="24" y="78" width="260" height="18" fill="#6a6864" opacity="0.08"/>
+  <text x="28" y="91" font-family="monospace" font-size="11" fill="#6a6864">- </text>
+  <text x="44" y="91" font-family="monospace" font-size="11" fill="#6a6864" opacity="0.7">println!("hello");</text>
+  <line x1="42" y1="88" x2="176" y2="88" stroke="#6a6864" stroke-width="1" opacity="0.6"/>
+
+  <!-- Added (pulsing highlight) -->
+  <rect x="24" y="100" width="260" height="18" fill="#eceae4" opacity="0.1">
+    <animate attributeName="opacity" values="0.06;0.18;0.06" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="28" y="113" font-family="monospace" font-size="11" fill="#eceae4">+ </text>
+  <text x="44" y="113" font-family="monospace" font-size="11" fill="#eceae4">println!("hello, world");</text>
+
+  <!-- Context close -->
+  <text x="28" y="132" font-family="monospace" font-size="11" fill="#6a6864">  }</text>
+
+  <!-- Count -->
+  <text x="28" y="162" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">1 FILE · +1 −1</text>
+</svg>

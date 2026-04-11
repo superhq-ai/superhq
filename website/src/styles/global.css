@@ -1,0 +1,302 @@
+/* ============================================================
+   SuperHQ — monotone chrome design system
+   Palette sourced from assets/AppIcon.svg chrome gradients.
+   ============================================================ */
+
+:root {
+  /* ink / background */
+  --ink-0: #0d0d12;
+  --ink-1: #14141b;
+  --ink-2: #1c1c26;
+  --ink-3: #22222e;
+
+  /* chrome foreground — same family as the app icon */
+  --fg:        #eceae4;  /* lit highlight */
+  --fg-dim:    #a8a6a0;  /* chrome mid */
+  --fg-dimmer: #6a6864;  /* chrome dim */
+  --fg-mute:   #3a3a42;  /* deepest gray */
+
+  /* lines */
+  --line:         rgba(236, 234, 228, 0.09);
+  --line-strong:  rgba(236, 234, 228, 0.18);
+  --line-hover:   rgba(236, 234, 228, 0.35);
+
+  /* type */
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  /* rhythm */
+  --radius: 8px;
+  --radius-sm: 6px;
+  --maxw: 1180px;
+  --maxw-text: 820px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--ink-0);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ============================================================
+   background — scattered `+` marks (runpane-style), not a grid
+   ============================================================ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-color: var(--ink-0);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360' viewBox='0 0 360 360'><g fill='none' stroke='%23eceae4' stroke-opacity='0.08' stroke-width='1' stroke-linecap='square'><path d='M40 30 h10 M45 25 v10'/><path d='M140 55 h10 M145 50 v10'/><path d='M260 35 h10 M265 30 v10'/><path d='M85 130 h10 M90 125 v10'/><path d='M210 150 h10 M215 145 v10'/><path d='M320 110 h10 M325 105 v10'/><path d='M55 235 h10 M60 230 v10'/><path d='M180 255 h10 M185 250 v10'/><path d='M290 230 h10 M295 225 v10'/><path d='M30 310 h10 M35 305 v10'/><path d='M155 325 h10 M160 320 v10'/><path d='M250 320 h10 M255 315 v10'/></g></svg>");
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+/* gentle vignette so the edges fall off */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse 100% 70% at 50% 30%,
+    transparent 0%,
+    rgba(13, 13, 18, 0.55) 75%,
+    rgba(13, 13, 18, 0.9) 100%
+  );
+  pointer-events: none;
+}
+
+/* ============================================================
+   typography
+   ============================================================ */
+h1, h2, h3, h4 {
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  margin: 0;
+  color: var(--fg);
+}
+
+h1 {
+  font-size: clamp(2.1rem, 5.2vw, 4.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+h2 {
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+p {
+  margin: 0;
+  color: var(--fg-dim);
+}
+
+a {
+  color: var(--fg);
+  text-decoration: none;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+a:hover { color: var(--fg); opacity: 0.85; }
+
+code, kbd, pre {
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  background: var(--ink-1);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+::selection {
+  background: var(--fg);
+  color: var(--ink-0);
+}
+
+/* ============================================================
+   layout primitives
+   ============================================================ */
+.container {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.section {
+  padding-block: 88px 0;
+  position: relative;
+}
+
+/* centered section header — consistent rhythm across all sections */
+.section-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  margin-bottom: 56px;
+}
+
+.eyebrow {
+  display: inline-block;
+  padding: 5px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--ink-1);
+  font-size: 0.68rem;
+  letter-spacing: 0.15em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+
+.section-title {
+  max-width: 28ch;
+  margin: 0;
+}
+
+.section-lede {
+  max-width: 60ch;
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--fg-dim);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   pill button — the primary interactive element
+   (runpane style: rounded rect, thin border, monotone)
+   ============================================================ */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--ink-1);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.pill-btn:hover {
+  border-color: var(--line-hover);
+  background: var(--ink-2);
+  color: var(--fg);
+  opacity: 1;
+}
+.pill-btn.static {
+  cursor: default;
+  color: var(--fg-dim);
+}
+.pill-btn.static:hover {
+  border-color: var(--line-strong);
+  background: var(--ink-1);
+  color: var(--fg-dim);
+}
+
+.pill-btn.primary {
+  padding: 12px 22px;
+  font-size: 0.82rem;
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--ink-0);
+}
+.pill-btn.primary:hover {
+  background: var(--fg-dim);
+  border-color: var(--fg-dim);
+  color: var(--ink-0);
+}
+
+.pill-btn .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-dim);
+}
+.pill-btn .arrow { transition: transform 160ms ease; }
+.pill-btn:hover .arrow { transform: translateX(2px); }
+
+/* ============================================================
+   raised card — simplified, no crosshair corners
+   ============================================================ */
+.card {
+  position: relative;
+  border: 1px solid var(--line-strong);
+  background: var(--ink-1);
+  border-radius: var(--radius);
+  padding: 24px 26px;
+  transition: border-color 200ms ease, background 200ms ease, transform 200ms ease;
+}
+.card:hover {
+  border-color: var(--line-hover);
+  background: var(--ink-2);
+}
+
+/* ============================================================
+   utility classes
+   ============================================================ */
+.mono { font-family: var(--mono); }
+.dim  { color: var(--fg-dim); }
+.dimmer { color: var(--fg-dimmer); }
+.center { text-align: center; }
+
+/* ============================================================
+   animations
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .section {
+    animation: fadeUp 600ms ease both;
+  }
+  .section:nth-child(1) { animation-delay: 0ms; }
+  .section:nth-child(2) { animation-delay: 40ms; }
+  .section:nth-child(3) { animation-delay: 80ms; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   responsive
+   ============================================================ */
+@media (max-width: 720px) {
+  .section { padding-block: 64px 0; }
+  body { font-size: 13px; }
+  .container { padding-inline: 16px; }
+  .pill-btn { font-size: 0.74rem; padding: 8px 14px; }
+}

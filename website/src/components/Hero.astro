@@ -1,0 +1,171 @@
+---
+// Hero — centered logo + single GitHub pill + headline + CTAs.
+// Copy tracks back to README.md:3 (tagline) and README.md:12 (brew).
+import icon from "../assets/icon.svg";
+---
+
+<section class="hero">
+  <div class="container hero-inner">
+    <img src={icon.src} alt="" class="hero-icon" width="72" height="72" />
+
+    <div class="pills">
+      <a class="pill-btn" href="https://github.com/superhq-ai/superhq">
+        <svg class="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+        </svg>
+        star on github
+      </a>
+    </div>
+
+    <h1 class="headline">
+      Run AI coding agents<br />
+      in real sandboxes.
+    </h1>
+
+    <p class="lede">
+      Claude Code, Codex, and custom agents. Each in its own microVM.
+    </p>
+
+    <div class="cta-row">
+      <a href="https://github.com/superhq-ai/superhq/releases" class="pill-btn primary">
+        download for macos <span class="arrow">→</span>
+      </a>
+      <button type="button" class="pill-btn install-cmd" data-copy="brew tap superhq-ai/tap && brew install --cask superhq" aria-label="Copy install command">
+        <span class="prompt">$</span>
+        <span class="cmd">brew tap superhq-ai/tap &amp;&amp; brew install --cask superhq</span>
+        <span class="copy-icon" aria-hidden="true">
+          <svg class="icon-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="5" width="8" height="8" rx="1.5"/>
+            <path d="M3 11V4a1 1 0 0 1 1-1h7"/>
+          </svg>
+          <svg class="icon-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8.5l3.2 3.2L13 4.8"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding-top: 100px;
+    padding-bottom: 20px;
+  }
+
+  .hero-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .hero-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+    margin-bottom: 28px;
+  }
+
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 44px;
+  }
+
+  .headline {
+    max-width: 22ch;
+    margin-bottom: 28px;
+  }
+
+  .lede {
+    max-width: 58ch;
+    font-family: var(--sans);
+    font-size: 1.02rem;
+    line-height: 1.65;
+    color: var(--fg-dim);
+    margin-bottom: 40px;
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .install-cmd {
+    padding-left: 14px;
+    padding-right: 14px;
+    max-width: 100%;
+  }
+  .install-cmd .prompt { color: var(--fg-dimmer); margin-right: 2px; flex-shrink: 0; }
+  .install-cmd .cmd {
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .install-cmd .copy-icon {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding-left: 10px;
+    border-left: 1px solid var(--line-strong);
+    box-sizing: content-box;
+    color: var(--fg-dimmer);
+  }
+  .install-cmd .copy-icon svg {
+    position: absolute;
+    top: 0;
+    left: 10px;
+    width: 14px;
+    height: 14px;
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+  .install-cmd .icon-check {
+    opacity: 0;
+    transform: scale(0.6);
+    color: var(--fg);
+  }
+  .install-cmd.copied .icon-copy {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  .install-cmd.copied .icon-check {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .install-cmd:hover .copy-icon { color: var(--fg); }
+
+  @media (max-width: 720px) {
+    .hero { padding-top: 72px; }
+  }
+  @media (max-width: 640px) {
+    .install-cmd { max-width: 92vw; }
+    .install-cmd .cmd { max-width: 60vw; }
+  }
+</style>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>(".install-cmd");
+  let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+  btn?.addEventListener("click", async () => {
+    const text = btn.dataset.copy ?? "";
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.classList.add("copied");
+      if (resetTimer) clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => btn.classList.remove("copied"), 1600);
+    } catch {
+      /* noop */
+    }
+  });
+</script>

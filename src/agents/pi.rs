@@ -129,4 +129,23 @@ pub async fn auth_setup(sandbox: &AsyncSandbox, vars: &HashMap<String, String>) 
 
     let config_path = format!("{home}/.pi/agent/models.json");
     write_config(sandbox, &config_path, config.to_string().as_bytes()).await;
+
+    // Lifecycle hooks via Pi extension API
+    let extension = r#"import { execSync } from "child_process";
+function emit(args) {
+  try { execSync(`superhq-hook ${args}`, { stdio: "ignore", timeout: 5000 }); } catch {}
+}
+export default function (pi) {
+  pi.on("session_start", async () => { emit("session_start"); });
+  pi.on("session_shutdown", async () => { emit("session_end"); });
+  pi.on("agent_start", async () => { emit("running"); });
+  pi.on("agent_end", async () => { emit("idle"); });
+  pi.on("tool_execution_start", async (event) => {
+    const tool = event.tool?.name || "";
+    emit(`running --tool "${tool}"`);
+  });
+}
+"#;
+    let ext_path = format!("{home}/.pi/agent/extensions/superhq-hooks.ts");
+    write_config(sandbox, &ext_path, extension.as_bytes()).await;
 }

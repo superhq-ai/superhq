@@ -32,6 +32,10 @@ pub fn text_invisible() -> Rgba { rgba(0xffffff1a) }
 pub fn status_green_dim() -> Rgba { rgba(0x4ade80aa) }
 pub fn status_dim() -> Rgba { rgba(0xffffff1a) }
 
+// ── Agent status ────────────────────────────────────────────────
+pub fn agent_running() -> Rgba { rgba(0x3B82F6FF) }
+pub fn agent_needs_input() -> Rgba { rgba(0xF59E0BFF) }
+
 // Error
 pub fn error_text() -> Rgba { rgba(0xEF4444FF) }
 pub fn error_bg() -> Rgba { rgba(0x1A0505FF) }

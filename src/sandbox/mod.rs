@@ -1,6 +1,7 @@
 pub mod agent_config;
 pub mod agent_setup;
 pub mod auth_gateway;
+pub mod event_watcher;
 #[allow(dead_code)]
 pub mod config;
 pub mod dotenv;

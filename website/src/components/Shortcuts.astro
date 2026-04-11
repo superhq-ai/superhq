@@ -1,0 +1,153 @@
+---
+// Shortcut tables — verbatim from README.md:56-81.
+type Row = { action: string; keys: string[] };
+type Section = { title: string; rows: Row[] };
+
+const sections: Section[] = [
+  {
+    title: "Workspaces",
+    rows: [
+      { action: "New workspace",        keys: ["Cmd", "N"] },
+      { action: "Switch workspace 1–9", keys: ["Cmd", "1–9"] },
+      { action: "Next workspace",       keys: ["Ctrl", "Cmd", "]"] },
+      { action: "Previous workspace",   keys: ["Ctrl", "Cmd", "["] },
+    ],
+  },
+  {
+    title: "Tabs",
+    rows: [
+      { action: "New agent tab",  keys: ["Cmd", "T"] },
+      { action: "Close tab",      keys: ["Cmd", "W"] },
+      { action: "Switch tab 1–9", keys: ["Ctrl", "1–9"] },
+      { action: "Next tab",       keys: ["Cmd", "Shift", "]"] },
+      { action: "Previous tab",   keys: ["Cmd", "Shift", "["] },
+    ],
+  },
+  {
+    title: "App",
+    rows: [
+      { action: "Settings", keys: ["Cmd", ","] },
+    ],
+  },
+];
+---
+
+<section class="section shortcuts">
+  <div class="container">
+    <header class="section-header">
+      <span class="eyebrow">keyboard shortcuts</span>
+      <h2 class="section-title">Built for people who live in their keyboard.</h2>
+    </header>
+
+    <div class="kbd-stack">
+      {sections.map((s) => (
+        <div class="kbd-section">
+          <h3 class="kbd-section-title">{s.title}</h3>
+          <div class="kbd-card">
+            {s.rows.map((row, i) => (
+              <div class="kbd-row">
+                <span class="action">{row.action}</span>
+                <span class="keys">
+                  {row.keys.map((k, ki) => (
+                    <>
+                      {ki > 0 && <span class="plus">+</span>}
+                      <kbd>{k}</kbd>
+                    </>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <p class="foot">
+      Hold <kbd>Cmd</kbd> to see workspace shortcut badges. Hold <kbd>Ctrl</kbd> to see tab badges.
+    </p>
+  </div>
+</section>
+
+<style>
+  .kbd-stack {
+    max-width: 780px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  .kbd-section-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--fg-dim);
+    margin-bottom: 14px;
+  }
+
+  .kbd-card {
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--ink-1);
+    overflow: hidden;
+  }
+
+  .kbd-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    min-height: 52px;
+  }
+  .kbd-row:last-child { border-bottom: none; }
+
+  .action {
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .plus {
+    color: var(--fg-mute);
+    font-size: 0.78rem;
+    margin: 0 1px;
+  }
+  .keys kbd {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+  }
+
+  .foot {
+    margin-top: 48px;
+    text-align: center;
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    color: var(--fg-dim);
+  }
+  .foot kbd {
+    font-size: 0.72rem;
+    padding: 1px 6px;
+    margin: 0 1px;
+  }
+
+  @media (max-width: 640px) {
+    .kbd-row {
+      padding: 14px 16px;
+    }
+    .action {
+      font-size: 0.82rem;
+    }
+  }
+</style>

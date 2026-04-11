@@ -1,0 +1,128 @@
+---
+// Security model — 3 card grid. No illustrations, just the narrative.
+// Content traces to:
+//   README.md:33-43 (auth gateway story)
+//   src/agents/mod.rs:12  (GATEWAY_DUMMY_KEY = "sk-shuru-gateway")
+//   src/sandbox/dotenv.rs (workspace .env stays on the host, never mounted)
+//   ../shuru/crates/shuru-proxy/src/lib.rs:30-41 (shuru_tok_* placeholders)
+const cards = [
+  {
+    idx: "01",
+    title: "Your .env stays on the host",
+    body: "SuperHQ reads <code>.env</code> at the workspace root but never copies it into the sandbox. The plaintext file is parsed host-side and routed through the shuru network proxy.",
+  },
+  {
+    idx: "02",
+    title: "Placeholders, not secrets",
+    body: "Inside the VM, the agent only ever sees opaque placeholders like <code>shuru_tok_*</code> in place of <code>.env</code> values. Real credentials never touch the sandbox filesystem or environment.",
+  },
+  {
+    idx: "03",
+    title: "Transparent rewrite on the wire",
+    body: "When the agent makes an outbound HTTPS call, the shuru proxy MITMs the TLS stream with its own CA and swaps placeholders for real values before the request leaves your machine.",
+  },
+];
+---
+
+<section class="section security">
+  <div class="container">
+    <header class="section-header">
+      <span class="eyebrow">security model</span>
+      <h2 class="section-title">Your secrets never touch the sandbox.</h2>
+      <p class="section-lede">
+        Two layers of indirection keep real credentials on the host: a
+        workspace <code>.env</code> reader and an agent auth gateway, both
+        routed through shuru's in-kernel network proxy.
+      </p>
+    </header>
+
+    <div class="sec-grid">
+      {cards.map((c) => (
+        <div class="sec-card">
+          <div class="sec-idx">{c.idx}</div>
+          <h3 class="sec-title">{c.title}</h3>
+          <p class="sec-body" set:html={c.body} />
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .security .section-lede :global(code) {
+    display: inline-block;
+    color: var(--fg);
+    background: rgba(236, 234, 228, 0.08);
+    padding: 0 5px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 0.82em;
+    white-space: nowrap;
+  }
+
+  .sec-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    max-width: 1040px;
+    margin: 0 auto;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--ink-1);
+    overflow: hidden;
+  }
+
+  .sec-card {
+    display: flex;
+    flex-direction: column;
+    padding: 32px 28px;
+    border-right: 1px solid var(--line);
+    min-height: 200px;
+  }
+  .sec-card:last-child { border-right: none; }
+
+  .sec-idx {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: var(--fg-dimmer);
+    font-feature-settings: "tnum";
+    margin-bottom: 14px;
+  }
+
+  .sec-title {
+    color: var(--fg);
+    font-size: 1.02rem;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    margin-bottom: 10px;
+  }
+
+  .sec-body {
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--fg-dim);
+  }
+  .sec-body :global(code) {
+    display: inline-block;
+    color: var(--fg);
+    background: rgba(236, 234, 228, 0.08);
+    padding: 0 5px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 0.82em;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 860px) {
+    .sec-grid {
+      grid-template-columns: 1fr;
+    }
+    .sec-card {
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      min-height: 0;
+    }
+    .sec-card:last-child { border-bottom: none; }
+  }
+</style>

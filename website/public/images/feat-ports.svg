@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 180" fill="none">
+  <!-- Labels -->
+  <text x="28" y="30" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">HOST</text>
+  <text x="372" y="30" text-anchor="end" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">SANDBOX</text>
+
+  <!-- Vertical divider -->
+  <line x1="200" y1="40" x2="200" y2="155" stroke="#6a6864" stroke-width="1" stroke-dasharray="2 4"/>
+
+  <!-- Port row 1: :3000 forward -->
+  <text x="28" y="60" font-family="monospace" font-size="12" fill="#a8a6a0">:3000</text>
+  <line x1="80" y1="56" x2="300" y2="56" stroke="#6a6864" stroke-width="1" stroke-dasharray="3 3"/>
+  <polyline points="293 52 300 56 293 60" stroke="#6a6864" stroke-width="1" fill="none"/>
+  <text x="308" y="60" font-family="monospace" font-size="12" fill="#eceae4">:3000</text>
+
+  <!-- Packet animation for port 3000 -->
+  <rect x="80" y="52" width="6" height="8" fill="#eceae4">
+    <animate attributeName="x" values="80;293" dur="2.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.9;1" dur="2.4s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Port row 2: :5173 forward -->
+  <text x="28" y="90" font-family="monospace" font-size="12" fill="#a8a6a0">:5173</text>
+  <line x1="80" y1="86" x2="300" y2="86" stroke="#6a6864" stroke-width="1" stroke-dasharray="3 3"/>
+  <polyline points="293 82 300 86 293 90" stroke="#6a6864" stroke-width="1" fill="none"/>
+  <text x="308" y="90" font-family="monospace" font-size="12" fill="#eceae4">:5173</text>
+
+  <!-- Port row 3: :6379 denied -->
+  <g opacity="0.4">
+    <text x="28" y="120" font-family="monospace" font-size="12" fill="#6a6864">:6379</text>
+    <line x1="85" y1="116" x2="315" y2="116" stroke="#6a6864" stroke-width="1" opacity="0.4"/>
+    <path d="M 196 110 l 8 12 m 0 -12 l -8 12" stroke="#6a6864" stroke-width="1" fill="none" stroke-linecap="round"/>
+    <text x="315" y="120" font-family="monospace" font-size="12" fill="#6a6864">closed</text>
+  </g>
+
+  <!-- Footer label -->
+  <text x="28" y="160" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">OPT-IN FORWARDING</text>
+</svg>

@@ -4,7 +4,7 @@ use shuru_sdk::{AsyncSandbox, SandboxConfig};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::session::{TabKind, TerminalTab};
+use super::session::{AgentStatus, TabKind, TerminalTab};
 use crate::agents;
 use crate::sandbox::agent_setup;
 use crate::sandbox::auth_gateway::{AuthGateway, AuthGatewayConfig};
@@ -521,6 +521,12 @@ impl super::TerminalPanel {
                         .with_resize_callback(resize_callback)
                     });
 
+                    // Start agent event service for lifecycle hooks
+                    let event_service = crate::sandbox::event_watcher::AgentEventService::start(
+                        sandbox.clone(),
+                        panel.tokio_handle.clone(),
+                    );
+
                     // Store terminal + sandbox but keep setup view visible.
                     // The terminal buffers output in the background.
                     if let Some(session) = panel.sessions.get(&ws_id) {
@@ -533,6 +539,34 @@ impl super::TerminalPanel {
                                 }
                             }
                         });
+                    }
+
+                    // Bridge agent status updates to GPUI
+                    if let Some((service, status_rx)) = event_service {
+                        if let Some(session) = panel.sessions.get(&ws_id) {
+                            session.update(cx, |s, _cx| {
+                                if let Some(tab) = s.find_tab_mut(tab_id) {
+                                    tab.event_service = Some(service);
+                                }
+                            });
+                        }
+                        let weak_panel = cx.entity().downgrade();
+                        cx.spawn(async move |_, cx| {
+                            while let Ok(status) = status_rx.recv_async().await {
+                                cx.update(|cx| {
+                                    weak_panel.update(cx, |panel, cx| {
+                                        if let Some(session) = panel.sessions.get(&ws_id) {
+                                            session.update(cx, |s, _cx| {
+                                                if let Some(tab) = s.find_tab_mut(tab_id) {
+                                                    tab.agent_status = status;
+                                                }
+                                            });
+                                        }
+                                        cx.notify();
+                                    }).ok();
+                                }).ok();
+                            }
+                        }).detach();
                     }
 
                     panel.notify_side_panel(ws_id, cx);
@@ -683,6 +717,8 @@ impl super::TerminalPanel {
                                     parent_agent_tab_id,
                                     sandbox: sandbox_for_kind,
                                 },
+                                agent_status: AgentStatus::Unknown,
+                                event_service: None,
                                 checkpointing: false,
                                 checkpoint_name: None,
                                 tab_db_id: None,

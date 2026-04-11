@@ -1,0 +1,80 @@
+---
+import icon from "../assets/icon.svg";
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="container foot-inner">
+    <div class="foot-brand">
+      <img src={icon.src} alt="" width="22" height="22" />
+      <span>SUPERHQ</span>
+    </div>
+
+    <nav class="foot-links">
+      <a href="https://github.com/superhq-ai/superhq">github</a>
+      <a href="https://github.com/superhq-ai/superhq/releases">releases</a>
+      <a href="https://github.com/superhq-ai/shuru">shuru sandbox</a>
+      <a href="https://gpui.rs">gpui</a>
+    </nav>
+
+    <div class="foot-copy">
+      <span class="sep">·</span>
+      <span>AGPL-3.0</span>
+      <span class="sep">·</span>
+      <span>© {year}</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    margin-top: 120px;
+    padding-block: 48px 60px;
+    border-top: 1px solid var(--line);
+  }
+
+  .foot-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    text-align: center;
+  }
+
+  .foot-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--fg);
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+    font-size: 0.86rem;
+  }
+  .foot-brand img {
+    border-radius: 5px;
+  }
+
+  .foot-links {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .foot-links a {
+    color: var(--fg-dim);
+    font-size: 0.78rem;
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+  }
+  .foot-links a:hover { color: var(--fg); opacity: 1; }
+
+  .foot-copy {
+    display: flex;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: var(--fg-dimmer);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .foot-copy .sep { color: var(--fg-mute); }
+</style>
