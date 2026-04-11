@@ -1,5 +1,6 @@
 use super::diff_engine::{DiffStats, FileDiff};
-use super::diff_view::{self, DiffScrollState};
+use super::diff_view::{self, DiffDisplayLine, DiffScrollState};
+use super::watcher::DiffResult;
 use crate::ui::theme as t;
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
@@ -13,9 +14,13 @@ use std::sync::Arc;
 pub struct ChangesTab {
     pub changed_files: Vec<ChangedFile>,
     file_diffs: HashMap<String, FileDiff>,
+    /// Pre-computed display lines (Arc so DiffBlock gets the same instances across frames).
+    display_lines: HashMap<String, Arc<Vec<DiffDisplayLine>>>,
     scroll_states: HashMap<String, DiffScrollState>,
     expanded: HashMap<String, Rc<Cell<bool>>>,
-    highlight_cache: HashMap<String, diff_view::HighlightCache>,
+    highlight_cache: HashMap<String, Arc<diff_view::HighlightCache>>,
+    /// Paths with in-flight highlight computation (prevents duplicate spawns).
+    highlighting: HashSet<String>,
     /// Files with pending discard/keep — filtered from bridge results until confirmed gone.
     suppressed: HashSet<String>,
 }
@@ -57,9 +62,11 @@ impl ChangesTab {
         Self {
             changed_files: Vec::new(),
             file_diffs: HashMap::new(),
+            display_lines: HashMap::new(),
             scroll_states: HashMap::new(),
             expanded: HashMap::new(),
             highlight_cache: HashMap::new(),
+            highlighting: HashSet::new(),
             suppressed: HashSet::new(),
         }
     }
@@ -67,9 +74,11 @@ impl ChangesTab {
     pub fn clear(&mut self) {
         self.changed_files.clear();
         self.file_diffs.clear();
+        self.display_lines.clear();
         self.scroll_states.clear();
         self.expanded.clear();
         self.highlight_cache.clear();
+        self.highlighting.clear();
         self.suppressed.clear();
     }
 
@@ -81,28 +90,41 @@ impl ChangesTab {
         self.changed_files = snap.changed_files;
     }
 
-    pub fn apply_results(
-        &mut self,
-        files: Vec<ChangedFile>,
-        diffs: HashMap<String, FileDiff>,
-        dirty_paths: &HashSet<String>,
-    ) {
+    pub fn apply_results(&mut self, result: DiffResult) {
         // Lift suppression for any path the bridge has now reported on.
-        // Success: file no longer in `files` → gone from UI.
-        // Failure: file still in `files` → reappears (operation didn't take effect).
-        for path in dirty_paths {
+        for path in &result.dirty_paths {
             self.suppressed.remove(path);
         }
 
-        self.changed_files = files.into_iter()
-            .filter(|f| !self.suppressed.contains(&f.path))
-            .collect();
-        self.file_diffs = diffs.into_iter()
-            .filter(|(k, _)| !self.suppressed.contains(k))
-            .collect();
-
-        for path in dirty_paths {
+        // Remove reverted files
+        for path in &result.removed_paths {
+            self.changed_files.retain(|f| f.path != *path);
+            self.file_diffs.remove(path);
+            self.display_lines.remove(path);
             self.highlight_cache.remove(path);
+        }
+
+        // Merge updated files
+        for (path, file) in result.updated_files {
+            if self.suppressed.contains(&path) { continue; }
+            if let Some(existing) = self.changed_files.iter_mut().find(|f| f.path == path) {
+                *existing = file;
+            } else {
+                self.changed_files.push(file);
+            }
+        }
+        for (path, diff) in result.updated_diffs {
+            if self.suppressed.contains(&path) { continue; }
+            let lines = Arc::new(diff_view::collect_lines(&diff.hunks));
+            // Only invalidate highlights if diff content actually changed
+            let content_changed = self.display_lines.get(&path)
+                .map_or(true, |old| old.len() != lines.len());
+            self.display_lines.insert(path.clone(), lines);
+            if content_changed {
+                self.highlight_cache.remove(&path);
+                self.highlighting.remove(&path);
+            }
+            self.file_diffs.insert(path, diff);
         }
     }
 
@@ -110,6 +132,7 @@ impl ChangesTab {
         self.suppressed.insert(path.to_string());
         self.changed_files.retain(|f| f.path != path);
         self.file_diffs.remove(path);
+        self.display_lines.remove(path);
         self.highlight_cache.remove(path);
     }
 
@@ -117,6 +140,7 @@ impl ChangesTab {
         self.suppressed.extend(self.changed_files.iter().map(|f| f.path.clone()));
         self.changed_files.clear();
         self.file_diffs.clear();
+        self.display_lines.clear();
         self.highlight_cache.clear();
     }
 
@@ -209,19 +233,50 @@ impl ChangesTab {
             let mut scroll = div().flex_grow().flex().flex_col().overflow_y_scrollbar().pt_1();
 
             for file in &self.changed_files {
-                if !self.highlight_cache.contains_key(&file.path) {
-                    if let Some(diff) = self.file_diffs.get(&file.path) {
-                        let runs = diff_view::compute_highlights(&file.path, &diff.hunks);
-                        self.highlight_cache.insert(file.path.clone(), runs);
-                    }
-                }
-            }
-
-            for file in &self.changed_files {
                 let diff = self.file_diffs.get(&file.path);
-                let ss = self.scroll_states.entry(file.path.clone()).or_insert_with(DiffScrollState::new);
-                let expanded = self.expanded.entry(file.path.clone()).or_insert_with(|| Rc::new(Cell::new(false)));
-                let highlights = self.highlight_cache.get(&file.path);
+
+                if !self.scroll_states.contains_key(&file.path) {
+                    self.scroll_states.insert(file.path.clone(), DiffScrollState::new());
+                }
+                let ss = self.scroll_states.get(&file.path).unwrap();
+
+                if !self.expanded.contains_key(&file.path) {
+                    self.expanded.insert(file.path.clone(), Rc::new(Cell::new(false)));
+                }
+                let expanded = self.expanded.get(&file.path).unwrap();
+
+                let lines = self.display_lines.get(&file.path);
+
+                // Lazy: compute highlights off the UI thread when expanded
+                let highlights = if expanded.get() {
+                    if !self.highlight_cache.contains_key(&file.path)
+                        && !self.highlighting.contains(&file.path)
+                    {
+                        if let Some(d) = diff {
+                            self.highlighting.insert(file.path.clone());
+                            let path = file.path.clone();
+                            let path2 = path.clone();
+                            let hunks = d.hunks.clone();
+                            cx.spawn(async move |this, cx| {
+                                let result = std::thread::spawn(move || {
+                                    diff_view::compute_highlights(&path, &hunks)
+                                }).join().ok();
+                                if let Some(cache) = result {
+                                    let _ = cx.update(|cx| {
+                                        this.update(cx, |panel, cx| {
+                                            panel.changes_tab.highlighting.remove(&path2);
+                                            panel.changes_tab.highlight_cache.insert(path2, Arc::new(cache));
+                                            cx.notify();
+                                        }).ok();
+                                    });
+                                }
+                            }).detach();
+                        }
+                    }
+                    self.highlight_cache.get(&file.path)
+                } else {
+                    None
+                };
                 let path = file.path.clone();
                 let status = file.status;
 
@@ -260,7 +315,7 @@ impl ChangesTab {
                 scroll = scroll.child(diff_view::render_file_section(
                     &file.path, file.status,
                     &file.diff_stats.clone().unwrap_or_default(),
-                    diff, ss, expanded, highlights, on_keep, on_discard,
+                    diff, lines, ss, expanded, highlights, on_keep, on_discard,
                 ));
             }
 

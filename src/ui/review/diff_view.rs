@@ -7,6 +7,7 @@ use super::changes_tab::FileStatus;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 const LINE_HEIGHT: f32 = 18.0;
@@ -28,23 +29,23 @@ const FADE_OUT_DURATION: f32 = 3.0;
 // ── Display line ────────────────────────────────────────────────
 
 #[derive(Clone)]
-struct DiffDisplayLine {
-    kind: DiffLineKind,
-    lineno: String,
-    content: String,
-    is_hunk_header: bool,
+pub struct DiffDisplayLine {
+    pub kind: DiffLineKind,
+    pub lineno: SharedString,
+    pub content: SharedString,
+    pub is_hunk_header: bool,
 }
 
-fn collect_lines(hunks: &[DiffHunk]) -> Vec<DiffDisplayLine> {
+pub fn collect_lines(hunks: &[DiffHunk]) -> Vec<DiffDisplayLine> {
     let mut lines = Vec::new();
     for hunk in hunks {
         lines.push(DiffDisplayLine {
             kind: DiffLineKind::Context,
-            lineno: String::new(),
-            content: format!(
+            lineno: SharedString::default(),
+            content: SharedString::from(format!(
                 "@@ -{},{} +{},{} @@",
                 hunk.old_start, hunk.old_count, hunk.new_start, hunk.new_count
-            ),
+            )),
             is_hunk_header: true,
         });
         for line in &hunk.lines {
@@ -55,8 +56,8 @@ fn collect_lines(hunks: &[DiffHunk]) -> Vec<DiffDisplayLine> {
             };
             lines.push(DiffDisplayLine {
                 kind: line.kind,
-                lineno: lineno.map(|n| n.to_string()).unwrap_or_default(),
-                content: line.content.trim_end_matches('\n').to_string(),
+                lineno: lineno.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
+                content: SharedString::from(line.content.trim_end_matches('\n').to_string()),
                 is_hunk_header: false,
             });
         }
@@ -266,24 +267,19 @@ impl DiffScrollState {
 
 pub struct DiffBlock {
     id: ElementId,
-    lines: Vec<DiffDisplayLine>,
-    highlights: Option<HighlightCache>,
+    lines: Arc<Vec<DiffDisplayLine>>,
+    highlights: Option<Arc<HighlightCache>>,
     scroll: DiffScrollState,
 }
 
 impl DiffBlock {
     pub fn new(
         id: ElementId,
-        hunks: &[DiffHunk],
-        highlights: Option<&HighlightCache>,
+        lines: Arc<Vec<DiffDisplayLine>>,
+        highlights: Option<Arc<HighlightCache>>,
         scroll: DiffScrollState,
     ) -> Self {
-        Self {
-            id,
-            lines: collect_lines(hunks),
-            highlights: highlights.cloned(),
-            scroll,
-        }
+        Self { id, lines, highlights, scroll }
     }
 }
 
@@ -365,7 +361,7 @@ impl Element for DiffBlock {
                     strikethrough: None,
                 };
                 Some(window.text_system().shape_line(
-                    SharedString::from(line.lineno.clone()),
+                    line.lineno.clone(),
                     font_sz,
                     &[run],
                     None,
@@ -392,7 +388,7 @@ impl Element for DiffBlock {
                     }]);
 
                 let shaped = window.text_system().shape_line(
-                    SharedString::from(line.content.clone()),
+                    line.content.clone(),
                     font_sz,
                     &runs,
                     None,
@@ -747,9 +743,10 @@ pub fn render_file_section(
     status: FileStatus,
     stats: &DiffStats,
     diff: Option<&FileDiff>,
+    lines: Option<&Arc<Vec<DiffDisplayLine>>>,
     scroll: &DiffScrollState,
     expanded: &Rc<Cell<bool>>,
-    highlights: Option<&HighlightCache>,
+    highlights: Option<&Arc<HighlightCache>>,
     on_keep: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     on_discard: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 ) -> Div {
@@ -760,24 +757,21 @@ pub fn render_file_section(
         return el;
     }
 
-    if let Some(diff) = diff {
+    if let (Some(diff), Some(lines)) = (diff, lines) {
         if diff.is_binary {
             el = el.child(
                 div().px_3().py_1().text_xs().text_color(t::text_faint())
                     .font_family("monospace").child("Binary file"),
             );
-        } else if !diff.hunks.is_empty() {
-            let line_count = diff.hunks.iter()
-                .map(|h| 1 + h.lines.len())
-                .sum::<usize>();
-            let block_height = line_count as f32 * LINE_HEIGHT;
+        } else if !lines.is_empty() {
+            let block_height = lines.len() as f32 * LINE_HEIGHT + SCROLLBAR_TRACK_HEIGHT;
 
             el = el.child(
                 div().mx_1().h(px(block_height)).child(
                     DiffBlock::new(
                         ElementId::Name(SharedString::from(format!("diff-{}", path))),
-                        &diff.hunks,
-                        highlights,
+                        lines.clone(),
+                        highlights.cloned(),
                         scroll.clone(),
                     ),
                 ),
