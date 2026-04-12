@@ -15,15 +15,33 @@ const features = [
   },
   {
     title: "Your code, live in the VM",
-    body: "The project directory mounts into the sandbox at /workspace. Agents edit the real files, no copies.",
+    body: "Your project mounts into the sandbox at /workspace. Changes stay in an overlay until you approve them in the review panel.",
     image: "/images/feat-mount.svg",
     alt: "Host project directory bind-mounted into the sandbox at /workspace",
   },
   {
     title: "Unified diff review",
-    body: "Every file the agent touched, in one place. Nothing leaves the sandbox until you've looked at it.",
+    body: "See every change the agent made. Keep what works, discard the rest - all before anything touches your local files.",
     image: "/images/feat-diff.svg",
     alt: "Unified diff view showing a one-line change in src/main.rs",
+  },
+  {
+    title: "Port forwarding",
+    body: "Opt-in port forwarding from sandbox to host. Dev servers, databases, APIs - exposed only when you say so.",
+    image: "/images/feat-ports.svg",
+    alt: "Diagram showing opt-in port forwarding from host to sandbox with a blocked port",
+  },
+  {
+    title: "Checkpoint and rewind",
+    body: "Stop a workspace, checkpoint the full VM state, and resume later in seconds. Fork a checkpoint to spin up a fresh branch.",
+    image: "/images/feat-checkpoint.svg",
+    alt: "Timeline showing three VM checkpoints with a rewind arrow",
+  },
+  {
+    title: "Secrets never touch the sandbox",
+    body: "Your .env stays on the host. Agents only see opaque placeholders - the proxy swaps in real values on the wire.",
+    image: "/images/feat-env.svg",
+    alt: "Diagram showing .env on host with real values and opaque placeholders inside the sandbox",
   }
 ];
 ---

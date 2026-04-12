@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160" fill="none">
+  <!-- Main branch -->
+  <line x1="48" y1="50" x2="124" y2="50" stroke="#6a6864" stroke-width="1"/>
+  <line x1="140" y1="50" x2="224" y2="50" stroke="#6a6864" stroke-width="1"/>
+  <line x1="240" y1="50" x2="300" y2="50" stroke="#6a6864" stroke-width="1"/>
+
+  <!-- base -->
+  <rect x="36" y="46" width="8" height="8" rx="1" stroke="#a8a6a0" stroke-width="1" fill="none"/>
+  <text x="40" y="38" text-anchor="middle" font-family="monospace" font-size="10" fill="#a8a6a0">base</text>
+
+  <!-- myenv (active) -->
+  <rect x="128" y="46" width="8" height="8" rx="1" stroke="#eceae4" stroke-width="1" fill="#eceae4"/>
+  <text x="132" y="38" text-anchor="middle" font-family="monospace" font-size="10" fill="#eceae4">myenv</text>
+
+  <!-- myenv2 -->
+  <rect x="228" y="46" width="8" height="8" rx="1" stroke="#a8a6a0" stroke-width="1" fill="none"/>
+  <text x="232" y="38" text-anchor="middle" font-family="monospace" font-size="10" fill="#a8a6a0">myenv2</text>
+
+  <!-- Fork: vertical down from myenv -->
+  <line x1="132" y1="58" x2="132" y2="100" stroke="#6a6864" stroke-width="1"/>
+
+  <!-- Fork branch -->
+  <line x1="132" y1="100" x2="196" y2="100" stroke="#6a6864" stroke-width="1"/>
+  <line x1="208" y1="100" x2="276" y2="100" stroke="#6a6864" stroke-width="1"/>
+  <line x1="288" y1="100" x2="358" y2="100" stroke="#6a6864" stroke-width="1"/>
+
+  <!-- fork node -->
+  <rect x="198" y="96" width="8" height="8" rx="1" stroke="#a8a6a0" stroke-width="1" fill="none"/>
+  <text x="202" y="88" text-anchor="middle" font-family="monospace" font-size="10" fill="#a8a6a0">fork</text>
+
+  <!-- HEAD (active) -->
+  <rect x="278" y="96" width="8" height="8" rx="1" stroke="#eceae4" stroke-width="1" fill="#eceae4"/>
+  <text x="282" y="88" text-anchor="middle" font-family="monospace" font-size="10" fill="#eceae4">active</text>
+
+  <!-- trailing node -->
+  <rect x="362" y="96" width="8" height="8" rx="1" stroke="#6a6864" stroke-width="1" fill="none"/>
+
+  <!-- Footer -->
+  <text x="40" y="148" font-family="monospace" font-size="9" fill="#6a6864" letter-spacing="1.2">STOP · CHECKPOINT · FORK · RESUME</text>
+</svg>
