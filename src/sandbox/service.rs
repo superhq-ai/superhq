@@ -84,11 +84,10 @@ pub async fn boot_with_retry(
     Err(last_err)
 }
 
-/// Post-boot setup: create /workspace, remove .env, copy gitignore, write auth config.
+/// Post-boot setup: create /workspace, copy gitignore, write auth config.
 pub async fn post_boot_setup(
     sandbox: &Arc<AsyncSandbox>,
     mount_path: Option<&str>,
-    dotenv_guest_path: Option<&str>,
     agent: Option<&Agent>,
     gateway_env: &HashMap<String, String>,
 ) {
@@ -96,13 +95,6 @@ pub async fn post_boot_setup(
     if mount_path.is_none() {
         let sb = sandbox.clone();
         let _ = sb.mkdir("/workspace", true).await;
-    }
-
-    // Remove .env so secrets aren't readable as plaintext
-    if let Some(guest_path) = dotenv_guest_path {
-        let sb = sandbox.clone();
-        let p = guest_path.to_string();
-        let _ = sb.exec_in("sh", &format!("rm -f {p}")).await;
     }
 
     // Copy host's global gitignore

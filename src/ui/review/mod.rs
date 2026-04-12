@@ -2,6 +2,7 @@ mod changes_tab;
 pub mod diff_engine;
 mod diff_service;
 mod diff_view;
+mod highlighter;
 mod watcher;
 
 pub use changes_tab::ChangesTab;
@@ -111,6 +112,7 @@ impl SidePanel {
         self.tokio_handle = Some(tokio_handle.clone());
         self.visible = true;
 
+        cx.emit(PanelEvent::Activate);
         cx.notify();
     }
 
@@ -151,6 +153,7 @@ impl SidePanel {
 
     pub fn deactivate(&mut self, cx: &mut Context<Self>) {
         self.visible = false;
+        cx.emit(PanelEvent::Deactivate);
         self.workspace_id = None;
         self.active_sandbox_key = None;
         self.sandbox = None;

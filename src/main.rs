@@ -11,8 +11,6 @@ use db::Database;
 use gpui::*;
 use shuru_sdk::AsyncSandbox;
 use gpui::prelude::FluentBuilder as _;
-use gpui_component::resizable::{h_resizable, resizable_panel};
-use gpui_component::{Root, Theme, ThemeMode};
 use std::sync::Arc;
 use ui::dialogs::new_workspace::NewWorkspaceDialog;
 use ui::dialogs::ports::PortsDialog;
@@ -30,7 +28,24 @@ actions!(
         ActivateTab7, ActivateTab8, ActivateTab9,
     ]
 );
+/// Drag payload for resizing panels.
+#[derive(Clone)]
+enum PanelResize {
+    Sidebar,
+    RightDock,
+}
+
+/// Invisible drag view rendered while resizing.
+struct ResizeDragView;
+
+impl Render for ResizeDragView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
 use ui::components::Toast;
+use ui::dock::{Dock, DockPosition};
 use ui::review::SidePanel;
 use ui::settings::SettingsPanel;
 use ui::setup::{SetupComplete, SetupScreen};
@@ -42,12 +57,13 @@ struct AppView {
     db: Arc<Database>,
     sidebar: Entity<WorkspaceListView>,
     terminal: Entity<TerminalPanel>,
-    review: Entity<SidePanel>,
+    right_dock: Entity<Dock>,
     toast: Entity<Toast>,
     dialog: Option<Entity<NewWorkspaceDialog>>,
     ports_dialog: Option<Entity<PortsDialog>>,
     settings: Option<Entity<SettingsPanel>>,
     setup: Option<Entity<SetupScreen>>,
+    sidebar_size: Pixels,
     cmd_held: bool,
     ctrl_held: bool,
     focus_handle: FocusHandle,
@@ -75,6 +91,12 @@ impl AppView {
             panel
         });
         let review = cx.new(|_| SidePanel::new());
+        let right_dock = cx.new(|cx| {
+            let mut dock = Dock::new(DockPosition::Right);
+            dock.set_size(px(340.0));
+            dock.add_panel(review.clone(), cx);
+            dock
+        });
         // Wire review panel into terminal so it gets sandbox-ready notifications
         terminal.update(cx, |panel, _| {
             panel.set_side_panel(review.clone());
@@ -118,12 +140,13 @@ impl AppView {
             db,
             sidebar,
             terminal,
-            review,
+            right_dock,
             toast,
             dialog: None,
             ports_dialog: None,
             settings: None,
             setup,
+            sidebar_size: px(240.0),
             cmd_held: false,
             ctrl_held: false,
             focus_handle: cx.focus_handle(),
@@ -231,7 +254,7 @@ impl AppView {
 }
 
 impl Render for AppView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::theme as t;
 
         // First-run setup — full screen, nothing else visible
@@ -244,7 +267,7 @@ impl Render for AppView {
                 .into_any_element();
         }
 
-        let show_review = self.review.read(cx).visible;
+        let show_review = self.right_dock.read(cx).visible;
         let show_settings = self.settings.is_some();
 
         div()
@@ -271,109 +294,153 @@ impl Render for AppView {
             .on_action(cx.listener(|this, _: &OpenSettingsAction, window, cx| {
                 this.open_settings(window, cx);
             }))
-            .child(
-                h_resizable("outer-layout")
+            .child({
+                let dock_size = self.right_dock.read(cx).size();
+                div()
+                    .id("workspace-layout")
+                    .size_full()
+                    .flex()
+                    .flex_row()
+                    .on_drag_move::<PanelResize>({
+                        let entity = cx.entity().downgrade();
+                        let right_dock = self.right_dock.clone();
+                        move |event, _window, cx| {
+                            let resize = event.drag(cx).clone();
+                            let x = event.event.position.x;
+                            let bounds = event.bounds;
+                            let _ = entity.update(cx, |this, cx| {
+                                match resize {
+                                    PanelResize::Sidebar => {
+                                        this.sidebar_size = (x - bounds.left())
+                                            .max(px(180.0))
+                                            .min(px(400.0));
+                                    }
+                                    PanelResize::RightDock => {
+                                        let size = (bounds.right() - x)
+                                            .max(px(260.0))
+                                            .min(px(500.0));
+                                        right_dock.update(cx, |dock, _| dock.set_size(size));
+                                    }
+                                }
+                                cx.notify();
+                            });
+                        }
+                    })
+                    // Sidebar
                     .child(
-                        resizable_panel()
-                            .size(px(240.0))
-                            .size_range(px(180.0)..px(400.0))
+                        div()
+                            .id("sidebar-container")
+                            .h_full()
+                            .w(self.sidebar_size)
+                            .flex_shrink_0()
+                            .bg(t::bg_surface())
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div().flex_grow().child(self.sidebar.clone()),
+                            )
+                            // Gear button at bottom of sidebar
                             .child(
                                 div()
-                                    .id("sidebar-container")
-                                    .size_full()
-                                    .bg(t::bg_surface())
-                                    .border_r_1()
-                                    .border_color(t::border_strong())
-                                    .flex()
-                                    .flex_col()
-                                    .child(
-                                        div().flex_grow().child(self.sidebar.clone()),
-                                    )
-                                    // Gear button at bottom of sidebar
+                                    .border_t_1()
+                                    .border_color(t::border_subtle())
                                     .child(
                                         div()
-                                            .border_t_1()
-                                            .border_color(t::border_subtle())
-                                            .child(
-                                                div()
-                                                    .id("settings-btn")
-                                                    .px_2p5()
-                                                    .py_2()
-                                                    .cursor_pointer()
-                                                    .text_xs()
-                                                    .text_color(if show_settings {
-                                                        t::text_tertiary()
+                                            .id("settings-btn")
+                                            .px_2p5()
+                                            .py_2()
+                                            .cursor_pointer()
+                                            .text_xs()
+                                            .text_color(if show_settings {
+                                                t::text_tertiary()
+                                            } else {
+                                                t::text_dim()
+                                            })
+                                            .when(show_settings, |el: Stateful<Div>| {
+                                                el.bg(t::bg_selected())
+                                            })
+                                            .hover(|s: StyleRefinement| {
+                                                s.bg(t::border_subtle())
+                                                    .text_color(t::text_tertiary())
+                                            })
+                                            .on_click(
+                                                cx.listener(|this, _, window, cx| {
+                                                    if this.settings.is_some() {
+                                                        this.close_settings(cx);
                                                     } else {
-                                                        t::text_dim()
-                                                    })
-                                                    .when(show_settings, |el: Stateful<Div>| {
-                                                        el.bg(t::bg_selected())
-                                                    })
-                                                    .hover(|s: StyleRefinement| {
-                                                        s.bg(t::border_subtle())
-                                                            .text_color(t::text_tertiary())
-                                                    })
-                                                    .on_click(
-                                                        cx.listener(|this, _, window, cx| {
-                                                            if this.settings.is_some() {
-                                                                this.close_settings(cx);
-                                                            } else {
-                                                                this.open_settings(window, cx);
-                                                            }
-                                                        }),
-                                                    )
-                                                    .relative()
-                                                    .child("Settings")
-                                                    .when(self.cmd_held, |el: Stateful<Div>| {
-                                                        el.child(
-                                                            div()
-                                                                .absolute()
-                                                                .right(px(8.0))
-                                                                .top(px(6.0))
-                                                                .px(px(5.0))
-                                                                .py(px(1.0))
-                                                                .rounded(px(4.0))
-                                                                .bg(t::bg_selected())
-                                                                .text_xs()
-                                                                .text_color(t::text_muted())
-                                                                .child("\u{2318},"),
-                                                        )
-                                                    }),
-                                            ),
+                                                        this.open_settings(window, cx);
+                                                    }
+                                                }),
+                                            )
+                                            .relative()
+                                            .child("Settings")
+                                            .when(self.cmd_held, |el: Stateful<Div>| {
+                                                el.child(
+                                                    div()
+                                                        .absolute()
+                                                        .right(px(8.0))
+                                                        .top(px(6.0))
+                                                        .px(px(5.0))
+                                                        .py(px(1.0))
+                                                        .rounded(px(4.0))
+                                                        .bg(t::bg_selected())
+                                                        .text_xs()
+                                                        .text_color(t::text_muted())
+                                                        .child("\u{2318},"),
+                                                )
+                                            }),
                                     ),
                             ),
                     )
+                    // Sidebar resize handle
                     .child(
-                        h_resizable("inner-layout")
-                            .child(
-                                resizable_panel().child(
-                                    div()
-                                        .size_full()
-                                        .bg(t::bg_base())
-                                        .child(self.terminal.clone()),
-                                ),
-                            )
-                            .child(
-                                resizable_panel()
-                                    .visible(show_review)
-                                    .size(px(340.0))
-                                    .size_range(px(260.0)..px(500.0))
-                                    .child(
-                                        div()
-                                            .size_full()
-                                            .bg(t::bg_surface())
-                                            .border_l_1()
-                                            .border_color(t::border_strong())
-                                            .child(self.review.clone()),
-                                    ),
-                            ),
-                    ),
-            )
+                        div()
+                            .id("sidebar-resize")
+                            .w(px(4.0))
+                            .h_full()
+                            .flex_shrink_0()
+                            .cursor(CursorStyle::ResizeLeftRight)
+                            .bg(t::border_strong())
+                            .on_drag(PanelResize::Sidebar, |_, _, _, cx| {
+                                cx.new(|_| ResizeDragView)
+                            }),
+                    )
+                    // Center terminal
+                    .child(
+                        div()
+                            .flex_grow()
+                            .min_w_0()
+                            .h_full()
+                            .bg(t::bg_base())
+                            .child(self.terminal.clone()),
+                    )
+                    // Right dock resize handle + panel (conditional)
+                    .when(show_review, |el| {
+                        el.child(
+                            div()
+                                .id("dock-resize")
+                                .w(px(4.0))
+                                .h_full()
+                                .flex_shrink_0()
+                                .cursor(CursorStyle::ResizeLeftRight)
+                                .bg(t::border_strong())
+                                .on_drag(PanelResize::RightDock, |_, _, _, cx| {
+                                    cx.new(|_| ResizeDragView)
+                                }),
+                        )
+                        .child(
+                            div()
+                                .w(dock_size)
+                                .h_full()
+                                .flex_shrink_0()
+                                .bg(t::bg_surface())
+                                .child(self.right_dock.clone()),
+                        )
+                    })
+            })
             .children(self.settings.as_ref().map(|s| s.clone()))
             .children(self.dialog.as_ref().map(|d| d.clone()))
             .children(self.ports_dialog.as_ref().map(|d| d.clone()))
-            .children(Root::render_dialog_layer(window, cx))
-            .children(Root::render_sheet_layer(window, cx))
             .child(self.toast.clone())
             .into_any_element()
     }
@@ -385,20 +452,8 @@ fn main() -> Result<()> {
     let app = Application::new().with_assets(assets::Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
         ui::components::actions::bind_keys(cx);
         ui::components::text_input::bind_keys(cx);
-        Theme::change(ThemeMode::Dark, None, cx);
-
-        // Override gpui_component theme colors to match our dark palette
-        {
-            let theme = cx.global_mut::<Theme>();
-            // Popover/menu colors — match our bg_surface (#1a1a1a) instead of #0a0a0a
-            theme.popover = gpui::hsla(0.0, 0.0, 0.11, 1.0);         // ~#1c1c1c
-            theme.popover_foreground = gpui::hsla(0.0, 0.0, 0.78, 1.0); // ~#c7c7c7
-            theme.border = gpui::hsla(0.0, 0.0, 0.16, 1.0);          // ~#292929
-            theme.accent_foreground = gpui::hsla(0.0, 0.0, 0.78, 1.0);
-        }
 
         // Disable Tab focus-cycling only inside the terminal, so Tab reaches
         // on_key_down for shell tab-completion. Root's Tab still works in dialogs/menus.
@@ -566,7 +621,7 @@ fn main() -> Result<()> {
                 // Store subscription in AppView so it stays alive
                 view.update(cx, |app, _| { app._keystroke_sub = Some(sub); });
 
-                cx.new(|cx| Root::new(view, window, cx))
+                view
             },
         )
         .expect("Failed to open window");

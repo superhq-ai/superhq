@@ -1,7 +1,5 @@
 use crate::ui::theme as t;
 use gpui::*;
-use gpui_component::highlighter::SyntaxHighlighter;
-use gpui_component::ActiveTheme as _;
 use super::diff_engine::{DiffLineKind, FileDiff, DiffStats, DiffHunk};
 use super::changes_tab::FileStatus;
 use std::cell::Cell;
@@ -15,7 +13,7 @@ const GUTTER_WIDTH: f32 = 48.0;
 const GUTTER_PAD: f32 = 8.0;
 const CONTENT_PAD: f32 = 6.0;
 
-// Scrollbar constants (matching gpui_component)
+// Scrollbar constants
 const SCROLLBAR_TRACK_HEIGHT: f32 = 14.0;
 const THUMB_WIDTH: f32 = 6.0;
 const THUMB_ACTIVE_WIDTH: f32 = 8.0;
@@ -135,14 +133,7 @@ pub fn compute_highlights(path: &str, hunks: &[DiffHunk]) -> HighlightCache {
         }
     }
 
-    // Parse with tree-sitter
-    let rope = ropey::Rope::from_str(&full_text);
-    let mut highlighter = SyntaxHighlighter::new(language);
-    highlighter.update(None, &rope);
-
-    // Use default dark theme for highlighting
-    let theme = gpui_component::highlighter::HighlightTheme::default_dark();
-    let all_styles = highlighter.styles(&(0..full_text.len()), &theme);
+    let all_styles = super::highlighter::highlight(language, &full_text);
 
     // Extract per-line spans
     lines.iter().enumerate().map(|(i, _line)| {
@@ -341,11 +332,10 @@ impl Element for DiffBlock {
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
-        cx: &mut App,
+        _cx: &mut App,
     ) -> DiffPrepaint {
-        let theme = cx.theme();
-        let font_sz = theme.mono_font_size;
-        let mono = font(theme.mono_font_family.clone());
+        let font_sz = px(13.0);
+        let mono = font("Menlo");
 
         let mut max_content_w = px(0.0);
         let mut shaped_lines = Vec::with_capacity(self.lines.len());

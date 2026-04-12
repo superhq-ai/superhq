@@ -3,6 +3,7 @@ pub mod button;
 pub mod context_menu;
 mod hold_button;
 pub mod path_picker;
+pub mod scrollbar;
 pub mod select;
 pub mod text_input;
 mod toast;

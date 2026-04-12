@@ -3,7 +3,6 @@
 // "Everything an agent needs, nothing it shouldn't have."
 //
 // Sources:
-//   src/sandbox/dotenv.rs  (workspace mounted at /workspace)
 //   Review panel with unified diff (known superhq feature)
 //   VM isolation is a structural consequence of shuru microVMs
 const features = [
@@ -36,12 +35,6 @@ const features = [
     body: "Stop a workspace, checkpoint the full VM state, and resume later in seconds. Fork a checkpoint to spin up a fresh branch.",
     image: "/images/feat-checkpoint.svg",
     alt: "Timeline showing three VM checkpoints with a rewind arrow",
-  },
-  {
-    title: "Secrets never touch the sandbox",
-    body: "Your .env stays on the host. Agents only see opaque placeholders - the proxy swaps in real values on the wire.",
-    image: "/images/feat-env.svg",
-    alt: "Diagram showing .env on host with real values and opaque placeholders inside the sandbox",
   }
 ];
 ---

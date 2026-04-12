@@ -4,7 +4,6 @@ pub mod auth_gateway;
 pub mod event_watcher;
 #[allow(dead_code)]
 pub mod config;
-pub mod dotenv;
 #[allow(dead_code)]
 pub mod git;
 #[allow(dead_code)]

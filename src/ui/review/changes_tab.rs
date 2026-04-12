@@ -2,10 +2,10 @@ use super::diff_engine::{DiffStats, FileDiff};
 use super::diff_service::DiffService;
 use super::diff_view::{self, DiffDisplayLine, DiffScrollState};
 use super::watcher::DiffResult;
+use crate::ui::components::scrollbar::{self, ScrollbarState};
 use crate::ui::theme as t;
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
-use gpui_component::scroll::ScrollableElement as _;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -27,6 +27,8 @@ pub struct ChangesTab {
     suppressed: HashSet<String>,
     /// Service for async diff/file operations.
     pub service: Option<DiffService>,
+    scroll_handle: ScrollHandle,
+    scrollbar_state: ScrollbarState,
 }
 
 #[derive(Clone)]
@@ -73,6 +75,8 @@ impl ChangesTab {
             diffing: HashSet::new(),
             suppressed: HashSet::new(),
             service: None,
+            scroll_handle: ScrollHandle::new(),
+            scrollbar_state: ScrollbarState::new(),
         }
     }
 
@@ -223,7 +227,14 @@ impl ChangesTab {
                 ),
         );
 
-        let mut scroll = div().flex_grow().min_h_0().flex().flex_col().overflow_y_scrollbar().pt_1();
+        let scroll_handle = self.scroll_handle.clone();
+        let scrollbar_state = self.scrollbar_state.clone();
+        scrollbar_state.did_scroll(); // show on content change
+
+        let mut scroll = div().id("changes-scroll").size_full().flex().flex_col()
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll_handle)
+            .pt_1();
 
             const MAX_VISIBLE_FILES: usize = 500;
             let overflow = self.changed_files.len().saturating_sub(MAX_VISIBLE_FILES);
@@ -352,7 +363,26 @@ impl ChangesTab {
                 );
             }
 
-        content = content.child(scroll);
+        content = content.child(
+            div()
+                .flex_grow()
+                .min_h_0()
+                .overflow_hidden()
+                .relative()
+                .child(scroll)
+                .child(
+                    canvas(
+                        move |_, _, _| {},
+                        move |bounds, _, window, _cx| {
+                            scrollbar::paint_scrollbar(bounds, &scroll_handle, &scrollbar_state, window);
+                        },
+                    )
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full(),
+                ),
+        );
 
         content.into_any_element()
     }

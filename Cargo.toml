@@ -6,9 +6,32 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 gpui = "0.2"
-gpui-component = { version = "0.5", features = ["tree-sitter-languages"] }
-gpui-component-assets = "0.5"
 gpui-terminal = { path = "crates/gpui-terminal" }
+
+# Tree-sitter for syntax highlighting
+tree-sitter = "0.25"
+tree-sitter-language = "0.1"
+tree-sitter-rust = "0.24"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-json = "0.24"
+tree-sitter-toml-ng = "0.7"
+tree-sitter-bash = "0.23"
+tree-sitter-yaml = "0.7"
+tree-sitter-html = "0.23"
+tree-sitter-css = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-swift = "0.7"
+tree-sitter-scala = "0.23"
+tree-sitter-zig = "1.1"
+tree-sitter-md = "0.5"
+tree-sitter-sequel = "0.3"
+tree-sitter-elixir = "0.3"
 portable-pty = "0.9"
 parking_lot = "0.12"
 shuru-sdk = { path = "../shuru/crates/shuru-sdk", features = ["cas"] }
@@ -16,7 +39,6 @@ shuru-proto = { path = "../shuru/crates/shuru-proto" }
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 anyhow = "1"
-dotenvy = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rust-embed = "8"

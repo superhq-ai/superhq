@@ -8,7 +8,6 @@ use super::session::{AgentStatus, TabKind, TerminalTab};
 use crate::agents;
 use crate::sandbox::agent_setup;
 use crate::sandbox::auth_gateway::{AuthGateway, AuthGatewayConfig};
-use crate::sandbox::dotenv;
 use crate::sandbox::pty_adapter::{ShuruPtyReader, ShuruPtyResizer, ShuruPtyWriter};
 use crate::sandbox::secrets;
 
@@ -351,42 +350,9 @@ impl super::TerminalPanel {
             let gateway_env_vars: HashSet<&str> = gateway_spec
                 .map(|s| [s.secret_env_var].into_iter().collect())
                 .unwrap_or_default();
-            let mut secrets_map = secrets::build_secrets_map(&db_for_secrets, &required_secrets, &gateway_env_vars)
+            let secrets_map = secrets::build_secrets_map(&db_for_secrets, &required_secrets, &gateway_env_vars)
                 .map(|r| r.secrets)
                 .unwrap_or_default();
-
-            // === PARSE .env FILES FROM MOUNT PATH ===
-            // Instead of mounting .env files directly (exposing plaintext secrets),
-            // parse them on the host side and route values through the secrets proxy.
-            // The proxy generates placeholder tokens as env vars; real values only
-            // appear in HTTP traffic via MITM substitution.
-            let mut dotenv_guest_path: Option<&str> = None;
-            if let Some(ref path) = mount_path {
-                let dir = std::path::Path::new(path);
-                let dotenv_vars = dotenv::parse_env(dir);
-                dotenv_guest_path = dotenv::env_guest_path(dir);
-
-                for (key, value) in dotenv_vars {
-                    if secrets_map.contains_key(&key) {
-                        continue; // vault secret takes precedence
-                    }
-                    // Use specific hosts for well-known API keys, catch-all for the rest
-                    let hosts = secrets::default_hosts(&key);
-                    let hosts = if hosts.is_empty() {
-                        vec!["*".into()]
-                    } else {
-                        hosts
-                    };
-                    secrets_map.insert(
-                        key.clone(),
-                        shuru_sdk::SecretConfig {
-                            from: key,
-                            hosts,
-                            value: Some(value),
-                        },
-                    );
-                }
-            }
 
             // === START AUTH GATEWAY (if agent uses one) ===
             let mut auth_gateway_handle: Option<AuthGateway> = None;
@@ -463,7 +429,6 @@ impl super::TerminalPanel {
             svc::post_boot_setup(
                 &sandbox,
                 mount_path.as_deref(),
-                dotenv_guest_path.as_deref(),
                 agent_for_config.as_ref(),
                 &gateway_env,
             ).await;

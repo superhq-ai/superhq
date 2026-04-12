@@ -100,7 +100,21 @@ impl Dock {
         self.position
     }
 
-    pub fn add_panel(&mut self, panel: impl PanelHandle) {
+    pub fn add_panel<T: Panel>(&mut self, panel: Entity<T>, cx: &mut Context<Self>) {
+        cx.subscribe(&panel, |dock, _, event: &PanelEvent, cx| {
+            match event {
+                PanelEvent::Activate => {
+                    dock.visible = true;
+                    cx.notify();
+                }
+                PanelEvent::Deactivate => {
+                    dock.visible = false;
+                    cx.notify();
+                }
+                PanelEvent::ChangePosition(_) => {}
+            }
+        })
+        .detach();
         if self.active_panel.is_none() {
             self.active_panel = Some(self.panels.len());
         }
@@ -268,6 +282,22 @@ impl PaneLayout {
             first: Box::new(first),
             second: Box::new(second),
             ratio,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dock — GPUI integration
+// ---------------------------------------------------------------------------
+
+impl Render for Dock {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        match self.active_panel() {
+            Some(panel) => div()
+                .id("dock-content")
+                .size_full()
+                .child(panel.to_any_element(window, cx)),
+            None => div().id("dock-empty"),
         }
     }
 }
