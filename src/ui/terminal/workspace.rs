@@ -176,6 +176,7 @@ impl super::TerminalPanel {
             restored_tabs.push(TerminalTab {
                 tab_id,
                 label: SharedString::from(saved.label.clone()),
+                dynamic_title: std::rc::Rc::new(std::cell::RefCell::new(None)),
                 terminal: None,
                 setup_steps: None,
                 setup_error: None,
@@ -302,6 +303,7 @@ impl super::TerminalPanel {
                 s.add_tab(TerminalTab {
                     tab_id,
                     label: display_label,
+                    dynamic_title: std::rc::Rc::new(std::cell::RefCell::new(None)),
                     terminal: None,
                     setup_steps: Some(setup_steps),
                     setup_error: None,

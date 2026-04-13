@@ -476,6 +476,11 @@ impl super::TerminalPanel {
 
             cx.update(|cx| {
                 this.update(cx, |panel, cx| {
+                    // Get the dynamic_title Rc from the existing tab
+                    let dyn_title_cb = panel.sessions.get(&ws_id)
+                        .and_then(|s| s.read(cx).find_tab(tab_id).map(|t| t.dynamic_title.clone()))
+                        .unwrap_or_else(|| std::rc::Rc::new(std::cell::RefCell::new(None)));
+
                     let terminal = cx.new(|cx| {
                         TerminalView::new(
                             Box::new(pty_writer),
@@ -484,6 +489,10 @@ impl super::TerminalPanel {
                             cx,
                         )
                         .with_resize_callback(resize_callback)
+                        .with_title_callback(move |_window, cx, title| {
+                            *dyn_title_cb.borrow_mut() = Some(SharedString::from(title.to_string()));
+                            cx.notify();
+                        })
                     });
 
                     // Start agent event service for lifecycle hooks
@@ -624,7 +633,6 @@ impl super::TerminalPanel {
         let tab_id = self.next_tab_id;
         self.next_tab_id += 1;
 
-        let label = format!("Shell ({})", parent_label);
         let tokio_handle = self.tokio_handle.clone();
         let this = cx.entity().downgrade();
         let sandbox_for_kind = sandbox.clone();
@@ -632,8 +640,13 @@ impl super::TerminalPanel {
         cx.spawn(async move |_, cx| {
             let shell = {
                 let sb = sandbox.clone();
+                let mut env = HashMap::new();
+                env.insert("TERM".to_string(), "xterm-256color".to_string());
+                env.insert("COLORTERM".to_string(), "truecolor".to_string());
+                env.insert("PROMPT_COMMAND".to_string(),
+                    r#"printf "\033]0;%s@%s:%s\007" "${USER}" "${HOSTNAME%%.*}" "${PWD/#$HOME/~}""#.to_string());
                 tokio_handle
-                    .spawn(async move { sb.open_shell(24, 80, Some("/workspace"), None, HashMap::new()).await })
+                    .spawn(async move { sb.open_shell(24, 80, Some("/workspace"), None, env).await })
                     .await
                     .unwrap()
             };
@@ -658,6 +671,9 @@ impl super::TerminalPanel {
 
             cx.update(|cx| {
                 this.update(cx, |panel, cx| {
+                    let dyn_title: std::rc::Rc<std::cell::RefCell<Option<SharedString>>> =
+                        std::rc::Rc::new(std::cell::RefCell::new(None));
+                    let dyn_title_cb = dyn_title.clone();
                     let terminal = cx.new(|cx| {
                         TerminalView::new(
                             Box::new(pty_writer),
@@ -666,13 +682,18 @@ impl super::TerminalPanel {
                             cx,
                         )
                         .with_resize_callback(resize_callback)
+                        .with_title_callback(move |_window, cx, title| {
+                            *dyn_title_cb.borrow_mut() = Some(SharedString::from(title.to_string()));
+                            cx.notify();
+                        })
                     });
 
                     if let Some(session) = panel.sessions.get(&ws_id) {
                         session.update(cx, |s, cx| {
                             s.add_tab(TerminalTab {
                                 tab_id,
-                                label: SharedString::from(label.clone()),
+                                label: SharedString::from(format!("{} guest shell", parent_label)),
+                                dynamic_title: dyn_title,
                                 terminal: Some(terminal.clone()),
                                 setup_steps: None,
                                 setup_error: None,
@@ -775,19 +796,27 @@ impl super::TerminalPanel {
         };
 
         if let Some(session) = self.sessions.get(&ws_id) {
+            let dyn_title: std::rc::Rc<std::cell::RefCell<Option<SharedString>>> =
+                std::rc::Rc::new(std::cell::RefCell::new(None));
+            let dyn_title_cb = dyn_title.clone();
             let terminal = cx.new(|cx| {
                 TerminalView::new(writer, reader, terminal_config, cx)
                     .with_resize_callback(resize_callback)
+                    .with_title_callback(move |_window, cx, title| {
+                        *dyn_title_cb.borrow_mut() = Some(SharedString::from(title.to_string()));
+                        cx.notify();
+                    })
             });
 
             let tab = TerminalTab {
                 tab_id,
-                label: SharedString::from("Host Terminal"),
+                label: SharedString::from("Host shell"),
+                dynamic_title: dyn_title,
                 terminal: Some(terminal),
                 setup_steps: None,
                 setup_error: None,
                 agent_color: Some(crate::ui::theme::text_muted()),
-                icon_path: Some(SharedString::from("icons/host-terminal.svg")),
+                icon_path: Some(SharedString::from("icons/terminal.svg")),
                 kind: TabKind::HostShell { pty_master },
                 agent_status: AgentStatus::Unknown,
                 event_service: None,

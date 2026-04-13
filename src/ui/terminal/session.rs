@@ -95,6 +95,9 @@ pub enum TabKind {
 pub struct TerminalTab {
     pub tab_id: u64,
     pub label: SharedString,
+    /// Dynamic title set by the terminal via escape sequences (OSC 0/2).
+    /// Takes precedence over `label` for display when Some.
+    pub dynamic_title: std::rc::Rc<std::cell::RefCell<Option<SharedString>>>,
     pub terminal: Option<Entity<TerminalView>>,
     pub setup_steps: Option<Vec<SetupStep>>,
     pub setup_error: Option<String>,

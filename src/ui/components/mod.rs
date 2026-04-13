@@ -7,6 +7,7 @@ pub mod scrollbar;
 pub mod select;
 pub mod text_input;
 mod toast;
+pub mod tooltip;
 pub use hold_button::HoldButton;
 pub use select::Select;
 pub use text_input::TextInput;

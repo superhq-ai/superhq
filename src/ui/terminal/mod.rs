@@ -79,6 +79,8 @@ impl Render for TerminalPanel {
                         tab_id: tab.tab_id,
                         display_label: if is_setup {
                             SharedString::from(format!("{} (initializing...)", tab.label))
+                        } else if let Some(ref title) = *tab.dynamic_title.borrow() {
+                            title.clone()
                         } else {
                             tab.label.clone()
                         },
@@ -168,8 +170,21 @@ impl Render for TerminalPanel {
                                     cx.notify();
                                 }
                             }))
+                            .max_w(px(200.0))
+                            .tooltip({
+                                let label = display_label.clone();
+                                move |_window, cx| {
+                                    cx.new(|_| crate::ui::components::tooltip::Tooltip::new(label.clone())).into()
+                                }
+                            })
                             .child(self.render_tab_icon(&icon_path, color, is_active))
-                            .child(display_label)
+                            .child(
+                                div()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .child(display_label),
+                            )
                             .when_some({
                                 match &snap.agent_status {
                                     session::AgentStatus::Running { .. } => Some(t::agent_running()),
@@ -276,7 +291,7 @@ impl Render for TerminalPanel {
                     // Shell items
                     if running_agents.is_empty() {
                         menu = menu.child(self.render_menu_item(
-                            "menu-shell-disabled", "Shell", Some("icons/terminal.svg"),
+                            "menu-shell-disabled", "Guest Shell", Some("icons/terminal.svg"),
                             None, false, false, cx, |_, _| {},
                         ));
                     } else if running_agents.len() == 1 {
@@ -284,7 +299,7 @@ impl Render for TerminalPanel {
                         let focused = item_idx == focused_idx;
                         menu = menu.child(self.render_menu_item(
                             "menu-shell",
-                            &format!("Shell ({})", running_agents[0].name),
+                            &format!("Guest Shell ({})", running_agents[0].name),
                             Some("icons/terminal.svg"),
                             None, true, focused, cx,
                             move |this, cx| { this.open_shell_tab(agent_tab_id, cx); },
@@ -296,7 +311,7 @@ impl Render for TerminalPanel {
                             let focused = item_idx == focused_idx;
                             menu = menu.child(self.render_menu_item(
                                 SharedString::from(format!("menu-shell-{}", i)),
-                                &format!("Shell ({})", info.name),
+                                &format!("Guest Shell ({})", info.name),
                                 Some("icons/terminal.svg"),
                                 None, true, focused, cx,
                                 move |this, cx| { this.open_shell_tab(agent_tab_id, cx); },
@@ -310,8 +325,8 @@ impl Render for TerminalPanel {
                         let focused = item_idx == focused_idx;
                         menu = menu.child(self.render_menu_item(
                             "menu-host-shell",
-                            "Host Terminal",
-                            Some("icons/host-terminal.svg"),
+                            "Host Shell",
+                            Some("icons/terminal.svg"),
                             Some(t::text_muted()),
                             true, focused, cx,
                             move |this, cx| { this.open_host_shell_tab(cx); },

@@ -114,9 +114,9 @@ const NODE_INSTALL_STEP: InstallStep = InstallStep::Download {
 /// All built-in agent configs.
 pub fn builtin_agents() -> Vec<AgentConfig> {
     vec![
+        pi::config(),
         claude::config(),
         codex::config(),
-        pi::config(),
     ]
 }
 
