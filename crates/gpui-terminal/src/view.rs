@@ -470,6 +470,11 @@ pub struct TerminalView {
     /// Whether we've sent the initial focus-in event to the PTY
     sent_focus_in: bool,
 
+    /// Detected URLs from last paint (shared with mouse handlers)
+    url_hits: std::rc::Rc<std::cell::RefCell<Vec<crate::render::UrlHit>>>,
+    /// Currently hovered URL (shared with renderer for highlight)
+    hovered_url: std::rc::Rc<std::cell::RefCell<Option<crate::render::UrlHit>>>,
+
     /// Scrollbar state for visual feedback and drag interaction
     scrollbar: TermScrollbar,
 }
@@ -592,6 +597,8 @@ impl TerminalView {
             clipboard_store_callback: None,
             exit_callback: None,
             sent_focus_in: false,
+            url_hits: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+            hovered_url: std::rc::Rc::new(std::cell::RefCell::new(None)),
             scrollbar: TermScrollbar::new(),
         }
     }
@@ -912,6 +919,23 @@ impl TerminalView {
     ) {
         window.focus(&self.focus_handle);
         self.ensure_focus_in_sent();
+
+        // Cmd+click on URL → open in browser
+        if event.button == MouseButton::Left && event.modifiers.platform {
+            let point = self.pixel_to_grid(event.position);
+            let hits = self.url_hits.borrow();
+            if let Some(hit) = hits.iter().find(|h| {
+                let grid_line = point.line.0 + self.state.with_term(|t| t.grid().display_offset() as i32);
+                h.line_idx as i32 == grid_line
+                    && point.column.0 >= h.start_col
+                    && point.column.0 < h.end_col
+            }) {
+                let url = hit.url.clone();
+                drop(hits);
+                let _ = open::that(&url);
+                return;
+            }
+        }
 
         let point = self.pixel_to_grid(event.position);
 
@@ -1236,7 +1260,8 @@ impl Render for TerminalView {
         let is_focused = self.focus_handle.is_focused(window);
         let bounds_storage = self.last_bounds.clone();
         let scrollbar = self.scrollbar.clone();
-
+        let url_hits = self.url_hits.clone();
+        let hovered_url = self.hovered_url.clone();
 
         div()
             .size_full()
@@ -1363,8 +1388,15 @@ impl Render for TerminalView {
                         let term = state_arc.lock();
                         measured_renderer.paint(
                             bounds, padding, &term, &selection_range,
-                            cursor_shape, is_focused, window, cx,
+                            cursor_shape, is_focused,
+                            Some(&hovered_url), Some(&url_hits),
+                            window, cx,
                         );
+
+                        // Set cursor to pointing hand when hovering a URL
+                        if hovered_url.borrow().is_some() {
+                            window.set_window_cursor_style(gpui::CursorStyle::PointingHand);
+                        }
 
                         // Paint scrollbar with interaction support
                         {
@@ -1532,6 +1564,45 @@ impl Render for TerminalView {
                                     }
                                 });
                             }
+                        }
+
+                        // URL hover detection
+                        {
+                            let url_hits = url_hits.clone();
+                            let hovered_url = hovered_url.clone();
+                            let cell_w: f32 = measured_renderer.cell_width.into();
+                            let cell_h: f32 = measured_renderer.cell_height.into();
+                            let origin = gpui::point(
+                                bounds.origin.x + padding.left,
+                                bounds.origin.y + padding.top,
+                            );
+
+                            window.on_mouse_event(move |event: &MouseMoveEvent, _phase, window, _cx| {
+                                let x: f32 = (event.position.x - origin.x).into();
+                                let y: f32 = (event.position.y - origin.y).into();
+                                if x < 0.0 || y < 0.0 { return; }
+                                let col = (x / cell_w) as usize;
+                                let line_idx = (y / cell_h) as usize;
+
+                                let hits = url_hits.borrow();
+                                let found = hits.iter().find(|h| {
+                                    h.line_idx == line_idx
+                                        && col >= h.start_col
+                                        && col < h.end_col
+                                });
+
+                                let mut current = hovered_url.borrow_mut();
+                                let was_some = current.is_some();
+                                if let Some(hit) = found {
+                                    if !was_some || current.as_ref().map(|c| &c.url) != Some(&hit.url) {
+                                        *current = Some(hit.clone());
+                                        window.refresh();
+                                    }
+                                } else if was_some {
+                                    *current = None;
+                                    window.refresh();
+                                }
+                            });
                         }
                     },
                 )

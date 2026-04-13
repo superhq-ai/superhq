@@ -228,11 +228,12 @@ impl ChangesTab {
 
         let scroll_handle = self.scroll_handle.clone();
         let scrollbar_state = self.scrollbar_state.clone();
-        scrollbar_state.did_scroll(); // show on content change
 
+        let sb_for_scroll = scrollbar_state.clone();
         let mut scroll = div().id("changes-scroll").size_full().flex().flex_col()
             .overflow_y_scroll()
             .track_scroll(&self.scroll_handle)
+            .on_scroll_wheel(move |_, _, _| { sb_for_scroll.did_scroll(); })
             .pt_1();
 
             const MAX_VISIBLE_FILES: usize = 500;

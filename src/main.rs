@@ -514,7 +514,7 @@ impl Render for AppView {
                             .flex()
                             .flex_col()
                             .child(
-                                div().flex_grow().child(self.sidebar.clone()),
+                                div().flex_grow().min_h_0().child(self.sidebar.clone()),
                             ),
                     )
                     // Sidebar resize handle

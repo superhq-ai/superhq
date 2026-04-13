@@ -17,6 +17,8 @@ portable-pty = "0.9"
 ropey = "1"
 parking_lot = "0.12"
 flume = "0.12"
+regex = "1"
+open = "5"
 
 [dependencies.arboard]
 version = "3"

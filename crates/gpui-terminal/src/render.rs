@@ -63,6 +63,20 @@
 use crate::box_drawing;
 use crate::colors::ColorPalette;
 use crate::event::GpuiEventProxy;
+use std::sync::LazyLock;
+
+static URL_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"https?://[^\s)>\]'""]+"#).expect("Invalid URL regex")
+});
+
+/// A detected URL in the terminal grid.
+#[derive(Clone, Debug)]
+pub struct UrlHit {
+    pub line_idx: usize,
+    pub start_col: usize,
+    pub end_col: usize,
+    pub url: String,
+}
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line, Point as AlacPoint};
 use alacritty_terminal::term::Term;
@@ -458,6 +472,8 @@ impl TerminalRenderer {
         selection_range: &Option<crate::terminal::SelectionRange>,
         cursor_shape: crate::terminal::CursorShape,
         is_focused: bool,
+        hovered_url: Option<&std::rc::Rc<std::cell::RefCell<Option<UrlHit>>>>,
+        url_hits_out: Option<&std::rc::Rc<std::cell::RefCell<Vec<UrlHit>>>>,
         window: &mut Window,
         _cx: &mut App,
     ) {
@@ -722,6 +738,41 @@ impl TerminalRenderer {
             }
         }
 
+        // Detect and paint URL underlines
+        let url_hits = self.detect_urls(grid, display_offset, num_lines, num_cols);
+        if !url_hits.is_empty() {
+            let hovered_idx = hovered_url.as_ref()
+                .and_then(|h| h.borrow().as_ref().map(|u| u.line_idx * 10000 + u.start_col));
+            for hit in &url_hits {
+                let hit_key = hit.line_idx * 10000 + hit.start_col;
+                let is_hovered = hovered_idx == Some(hit_key);
+                let underline_color = if is_hovered {
+                    gpui::hsla(0.0, 0.0, 0.7, 0.8)
+                } else {
+                    gpui::hsla(0.0, 0.0, 0.5, 0.3)
+                };
+                let y = origin.y + self.cell_height * (hit.line_idx as f32) + self.cell_height - px(1.0);
+                let x = origin.x + self.cell_width * (hit.start_col as f32);
+                let w = self.cell_width * ((hit.end_col - hit.start_col) as f32);
+                window.paint_quad(quad(
+                    Bounds {
+                        origin: Point { x, y },
+                        size: Size { width: w, height: px(1.0) },
+                    },
+                    px(0.0),
+                    underline_color,
+                    Edges::<Pixels>::default(),
+                    transparent_black(),
+                    Default::default(),
+                ));
+            }
+        }
+
+        // Store URL hits for mouse handler access
+        if let Some(url_state) = url_hits_out {
+            *url_state.borrow_mut() = url_hits;
+        }
+
         // Paint selection highlight (between backgrounds and cursor)
         if let Some(sel_range) = selection_range {
             self.paint_selection(sel_range, display_offset, num_lines, num_cols, origin, window);
@@ -809,6 +860,52 @@ impl TerminalRenderer {
     /// Selection coordinates are in grid space (negative lines = scrollback).
     /// `display_offset` converts them to visual viewport rows:
     ///   visual_row = grid_line + display_offset
+    fn detect_urls(
+        &self,
+        grid: &alacritty_terminal::grid::Grid<Cell>,
+        display_offset: i32,
+        num_lines: usize,
+        num_cols: usize,
+    ) -> Vec<UrlHit> {
+        let mut hits = Vec::new();
+        for line_idx in 0..num_lines {
+            let line = Line(line_idx as i32 - display_offset);
+            let mut row_text = String::with_capacity(num_cols);
+            let mut col_offsets: Vec<usize> = Vec::with_capacity(num_cols);
+
+            for col_idx in 0..num_cols {
+                let point = AlacPoint::new(line, Column(col_idx));
+                let cell = &grid[point];
+                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                col_offsets.push(col_idx);
+                let ch = if cell.c == '\0' { ' ' } else { cell.c };
+                row_text.push(ch);
+            }
+
+            for m in URL_REGEX.find_iter(&row_text) {
+                let char_start = row_text[..m.start()].chars().count();
+                let char_end = row_text[..m.end()].chars().count();
+                if char_start < col_offsets.len() && char_end <= col_offsets.len() {
+                    let start_col = col_offsets[char_start];
+                    let end_col = if char_end < col_offsets.len() {
+                        col_offsets[char_end]
+                    } else {
+                        col_offsets.last().map(|c| c + 1).unwrap_or(0)
+                    };
+                    hits.push(UrlHit {
+                        line_idx,
+                        start_col,
+                        end_col,
+                        url: m.as_str().to_string(),
+                    });
+                }
+            }
+        }
+        hits
+    }
+
     fn paint_selection(
         &self,
         sel: &crate::terminal::SelectionRange,

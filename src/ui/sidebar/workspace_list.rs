@@ -1,4 +1,5 @@
 use crate::db::{Database, Workspace};
+use crate::ui::components::scrollbar::{self, ScrollbarState};
 use crate::ui::review::SidePanel;
 use crate::ui::terminal::TerminalPanel;
 use crate::ui::theme as t;
@@ -17,6 +18,8 @@ pub struct WorkspaceListView {
     pub active_workspace_id: Option<i64>,
     pub cmd_held: bool,
     on_new_workspace: std::rc::Rc<dyn Fn(&mut Window, &mut App) + 'static>,
+    scroll_handle: ScrollHandle,
+    scrollbar_state: ScrollbarState,
 }
 
 impl WorkspaceListView {
@@ -56,6 +59,8 @@ impl WorkspaceListView {
             active_workspace_id,
             cmd_held: false,
             on_new_workspace,
+            scroll_handle: ScrollHandle::new(),
+            scrollbar_state: ScrollbarState::new(),
         }
     }
 
@@ -242,15 +247,42 @@ impl Render for WorkspaceListView {
                     }),
             )
             .child(div().h(px(1.0)).mx_2p5().bg(t::border_subtle()))
-            .child(
-                div()
-                    .flex_grow()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .py_1()
-                    .px(px(6.0))
-                    .children(self.workspace_views.iter().map(|view| view.clone())),
+            .child(div()
+                .flex_grow()
+                .min_h_0()
+                .relative()
+                .child({
+                    let sb_for_scroll = self.scrollbar_state.clone();
+                    div()
+                        .id("workspace-scroll")
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.scroll_handle)
+                        .on_scroll_wheel(move |_, _, _| { sb_for_scroll.did_scroll(); })
+                        .gap(px(2.0))
+                        .py_1()
+                        .px(px(6.0))
+                        .children(self.workspace_views.iter().map(|view| view.clone()))
+                })
+                .child({
+                    let scroll_handle = self.scroll_handle.clone();
+                    let scrollbar_state = self.scrollbar_state.clone();
+                    canvas(
+                        move |_, _, _| {},
+                        move |bounds, _, window, _cx| {
+                            scrollbar::paint_scrollbar(bounds, &scroll_handle, &scrollbar_state, window);
+                        },
+                    )
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                }),
             )
     }
 }
