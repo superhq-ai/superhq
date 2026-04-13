@@ -11,7 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 gpui = "0.2.2"
-gpui-component = "0.5"
 alacritty_terminal = "0.25.1"
 anyhow = "1"
 portable-pty = "0.9"

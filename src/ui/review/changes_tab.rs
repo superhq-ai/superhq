@@ -11,18 +11,41 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 
+struct PerFileState {
+    diff: Option<FileDiff>,
+    display_lines: Option<Arc<Vec<DiffDisplayLine>>>,
+    scroll: DiffScrollState,
+    selection: diff_view::SelectionState,
+    expanded: Rc<Cell<bool>>,
+    highlights: Option<Arc<diff_view::HighlightCache>>,
+    highlighting: bool,
+    diffing: bool,
+    focus: FocusHandle,
+    char_width_cache: Rc<Cell<Option<Pixels>>>,
+}
+
+impl PerFileState {
+    fn new(cx: &mut App) -> Self {
+        Self {
+            diff: None,
+            display_lines: None,
+            scroll: DiffScrollState::new(),
+            selection: diff_view::SelectionState::new(),
+            expanded: Rc::new(Cell::new(false)),
+            highlights: None,
+            highlighting: false,
+            diffing: false,
+            focus: cx.focus_handle(),
+            char_width_cache: Rc::new(Cell::new(None)),
+        }
+    }
+}
+
 pub struct ChangesTab {
     pub changed_files: Vec<ChangedFile>,
-    file_diffs: HashMap<String, FileDiff>,
-    /// Pre-computed display lines (Arc so DiffBlock gets the same instances across frames).
-    display_lines: HashMap<String, Arc<Vec<DiffDisplayLine>>>,
-    scroll_states: HashMap<String, DiffScrollState>,
-    expanded: HashMap<String, Rc<Cell<bool>>>,
-    highlight_cache: HashMap<String, Arc<diff_view::HighlightCache>>,
-    /// Paths with in-flight highlight computation (prevents duplicate spawns).
-    highlighting: HashSet<String>,
-    /// Paths with in-flight diff computation (prevents duplicate spawns).
-    diffing: HashSet<String>,
+    file_states: HashMap<String, PerFileState>,
+    /// File path with an active context menu, if any.
+    context_menu: Option<(String, Point<Pixels>)>,
     /// Files with pending discard/keep — filtered from bridge results until confirmed gone.
     suppressed: HashSet<String>,
     /// Service for async diff/file operations.
@@ -66,13 +89,8 @@ impl ChangesTab {
     pub fn new() -> Self {
         Self {
             changed_files: Vec::new(),
-            file_diffs: HashMap::new(),
-            display_lines: HashMap::new(),
-            scroll_states: HashMap::new(),
-            expanded: HashMap::new(),
-            highlight_cache: HashMap::new(),
-            highlighting: HashSet::new(),
-            diffing: HashSet::new(),
+            file_states: HashMap::new(),
+            context_menu: None,
             suppressed: HashSet::new(),
             service: None,
             scroll_handle: ScrollHandle::new(),
@@ -82,13 +100,8 @@ impl ChangesTab {
 
     pub fn clear(&mut self) {
         self.changed_files.clear();
-        self.file_diffs.clear();
-        self.display_lines.clear();
-        self.scroll_states.clear();
-        self.expanded.clear();
-        self.highlight_cache.clear();
-        self.highlighting.clear();
-        self.diffing.clear();
+        self.file_states.clear();
+        self.context_menu = None;
         self.suppressed.clear();
     }
 
@@ -129,9 +142,11 @@ impl ChangesTab {
     }
 
     fn purge_diff_cache(&mut self, path: &str) {
-        self.file_diffs.remove(path);
-        self.display_lines.remove(path);
-        self.highlight_cache.remove(path);
+        if let Some(fs) = self.file_states.get_mut(path) {
+            fs.diff = None;
+            fs.display_lines = None;
+            fs.highlights = None;
+        }
     }
 
     fn suppress_file(&mut self, path: &str) {
@@ -143,9 +158,11 @@ impl ChangesTab {
     fn suppress_all(&mut self) {
         self.suppressed.extend(self.changed_files.iter().map(|f| f.path.clone()));
         self.changed_files.clear();
-        self.file_diffs.clear();
-        self.display_lines.clear();
-        self.highlight_cache.clear();
+        for fs in self.file_states.values_mut() {
+            fs.diff = None;
+            fs.display_lines = None;
+            fs.highlights = None;
+        }
     }
 
     pub fn render(&mut self, cx: &mut Context<super::SidePanel>) -> AnyElement {
@@ -160,8 +177,8 @@ impl ChangesTab {
                 .into_any_element();
         }
 
-        let total_add: usize = self.file_diffs.values().map(|d| d.additions).sum();
-        let total_del: usize = self.file_diffs.values().map(|d| d.deletions).sum();
+        let total_add: usize = self.file_states.values().filter_map(|fs| fs.diff.as_ref()).map(|d| d.additions).sum();
+        let total_del: usize = self.file_states.values().filter_map(|fs| fs.diff.as_ref()).map(|d| d.deletions).sum();
         let file_count = self.changed_files.len();
 
         content = content.child(
@@ -240,24 +257,12 @@ impl ChangesTab {
             let overflow = self.changed_files.len().saturating_sub(MAX_VISIBLE_FILES);
 
             for file in self.changed_files.iter().take(MAX_VISIBLE_FILES) {
-                if !self.scroll_states.contains_key(&file.path) {
-                    self.scroll_states.insert(file.path.clone(), DiffScrollState::new());
-                }
-                let ss = self.scroll_states.get(&file.path).unwrap();
+                let fs = self.file_states.entry(file.path.clone()).or_insert_with(|| PerFileState::new(cx));
 
-                if !self.expanded.contains_key(&file.path) {
-                    self.expanded.insert(file.path.clone(), Rc::new(Cell::new(false)));
-                }
-                let expanded = self.expanded.get(&file.path).unwrap();
-
-                // Lazy: compute diff off the UI thread when expanded
-                if expanded.get()
-                    && !self.file_diffs.contains_key(&file.path)
-                    && !self.diffing.contains(&file.path)
-                {
+                if fs.expanded.get() && fs.diff.is_none() && !fs.diffing {
                     let svc = self.service.clone();
                     if let Some(svc) = svc {
-                        self.diffing.insert(file.path.clone());
+                        fs.diffing = true;
                         let path = file.path.clone();
                         let path2 = path.clone();
                         let handle = svc.spawn_result(move |s| async move {
@@ -268,9 +273,11 @@ impl ChangesTab {
                             let lines = Arc::new(diff_view::collect_lines(&diff.hunks));
                             let _ = cx.update(|cx| {
                                 this.update(cx, |panel, cx| {
-                                    panel.changes_tab.diffing.remove(&path2);
-                                    panel.changes_tab.display_lines.insert(path2.clone(), lines);
-                                    panel.changes_tab.file_diffs.insert(path2, diff);
+                                    if let Some(fs) = panel.changes_tab.file_states.get_mut(&path2) {
+                                        fs.diffing = false;
+                                        fs.display_lines = Some(lines);
+                                        fs.diff = Some(diff);
+                                    }
                                     cx.notify();
                                 }).ok();
                             });
@@ -278,16 +285,13 @@ impl ChangesTab {
                     }
                 }
 
-                let diff = self.file_diffs.get(&file.path);
-                let lines = self.display_lines.get(&file.path);
+                let diff = fs.diff.as_ref();
+                let lines = fs.display_lines.as_ref();
 
-                // Lazy: compute highlights off the UI thread when expanded
-                let highlights = if expanded.get() {
-                    if !self.highlight_cache.contains_key(&file.path)
-                        && !self.highlighting.contains(&file.path)
-                    {
+                let highlights = if fs.expanded.get() {
+                    if fs.highlights.is_none() && !fs.highlighting {
                         if let Some(d) = diff {
-                            self.highlighting.insert(file.path.clone());
+                            fs.highlighting = true;
                             let path = file.path.clone();
                             let path2 = path.clone();
                             let hunks = d.hunks.clone();
@@ -298,8 +302,10 @@ impl ChangesTab {
                                 if let Some(cache) = result {
                                     let _ = cx.update(|cx| {
                                         this.update(cx, |panel, cx| {
-                                            panel.changes_tab.highlighting.remove(&path2);
-                                            panel.changes_tab.highlight_cache.insert(path2, Arc::new(cache));
+                                            if let Some(fs) = panel.changes_tab.file_states.get_mut(&path2) {
+                                                fs.highlighting = false;
+                                                fs.highlights = Some(Arc::new(cache));
+                                            }
                                             cx.notify();
                                         }).ok();
                                     });
@@ -307,52 +313,55 @@ impl ChangesTab {
                             }).detach();
                         }
                     }
-                    self.highlight_cache.get(&file.path)
+                    fs.highlights.as_ref()
                 } else {
                     None
                 };
                 let path = file.path.clone();
                 let status = file.status;
 
-                // Only create keep/discard closures when expanded — avoids
-                // 1000 heap allocations per frame for collapsed items.
-                let (on_keep, on_discard) = if expanded.get() {
-                    let keep = {
-                        let path = path.clone();
-                        Some(Box::new(cx.listener(move |panel, _: &ClickEvent, _window, cx| {
-                            let svc = panel.changes_tab.service.clone();
-                            if let Some(svc) = svc {
-                                panel.changes_tab.suppress_file(&path);
-                                cx.notify();
-                                let p = path.clone();
-                                svc.spawn(move |s| async move { s.keep_file(&p, status).await });
-                            }
-                        })) as Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>)
-                    };
-                    let discard = {
-                        let path = path.clone();
-                        Some(Box::new(cx.listener(move |panel, _: &ClickEvent, _window, cx| {
-                            let svc = panel.changes_tab.service.clone();
-                            if let Some(svc) = svc {
-                                panel.changes_tab.suppress_file(&path);
-                                cx.notify();
-                                let p = path.clone();
-                                svc.spawn(move |s| async move { s.discard_file(&p).await });
-                            }
-                        })) as Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>)
-                    };
-                    (keep, discard)
-                } else {
-                    (None, None)
+                let on_keep = {
+                    let path = path.clone();
+                    Box::new(cx.listener(move |panel, _: &ClickEvent, _window, cx| {
+                        let svc = panel.changes_tab.service.clone();
+                        if let Some(svc) = svc {
+                            panel.changes_tab.suppress_file(&path);
+                            cx.notify();
+                            let p = path.clone();
+                            svc.spawn(move |s| async move { s.keep_file(&p, status).await });
+                        }
+                    })) as Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>
+                };
+                let on_discard = {
+                    let path = path.clone();
+                    Box::new(cx.listener(move |panel, _: &ClickEvent, _window, cx| {
+                        let svc = panel.changes_tab.service.clone();
+                        if let Some(svc) = svc {
+                            panel.changes_tab.suppress_file(&path);
+                            cx.notify();
+                            let p = path.clone();
+                            svc.spawn(move |s| async move { s.discard_file(&p).await });
+                        }
+                    })) as Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>
                 };
 
-                let stats = diff.map(|d| DiffStats { additions: d.additions, deletions: d.deletions })
-                    .unwrap_or_default();
-                scroll = scroll.child(diff_view::render_file_section(
-                    &file.path, file.status,
-                    &stats,
-                    diff, lines, ss, expanded, highlights, on_keep, on_discard,
-                ));
+                scroll = scroll.child(diff_view::render_file_section(diff_view::FileSectionParams {
+                    path: &file.path,
+                    status: file.status,
+                    stats: diff.map(|d| DiffStats { additions: d.additions, deletions: d.deletions })
+                        .unwrap_or_default(),
+                    diff,
+                    lines,
+                    highlights,
+                    scroll: &fs.scroll,
+                    selection: &fs.selection,
+                    expanded: &fs.expanded,
+                    focus_handle: &fs.focus,
+                    char_width_cache: &fs.char_width_cache,
+                    parent_scroll: Some(&self.scroll_handle),
+                    on_keep: on_keep,
+                    on_discard: on_discard,
+                }));
             }
 
             if overflow > 0 {
@@ -383,6 +392,75 @@ impl ChangesTab {
                     .size_full(),
                 ),
         );
+
+        // Context menu — rendered outside the scroll container so positioning is correct
+        for fs in self.file_states.values() {
+            let sel = fs.selection.get();
+            if let Some(pos) = sel.context_menu {
+                let sel_state = fs.selection.clone();
+                let lines = fs.display_lines.clone();
+
+                content = content
+                    .child(deferred(
+                        anchored()
+                            .position(pos)
+                            .anchor(Corner::TopLeft)
+                            .snap_to_window()
+                            .child(
+                                t::popover()
+                                    .w(px(120.0))
+                                    .child(
+                                        t::menu_item()
+                                            .id("diff-ctx-copy")
+                                            .hover(|s| s.bg(t::bg_hover()))
+                                            .on_mouse_down(MouseButton::Left, {
+                                                let sel_state = sel_state.clone();
+                                                let lines = lines.clone();
+                                                move |_, _, cx| {
+                                                    let s = sel_state.get();
+                                                    if let Some(ref l) = lines {
+                                                        diff_view::copy_selection(&s, l, cx);
+                                                    }
+                                                    let mut s = s;
+                                                    s.context_menu = None;
+                                                    sel_state.set(s);
+                                                    cx.stop_propagation();
+                                                }
+                                            })
+                                            .child("Copy")
+                                            .child(
+                                                div()
+                                                    .ml_auto()
+                                                    .text_xs()
+                                                    .text_color(t::text_ghost())
+                                                    .child("\u{2318}C"),
+                                            ),
+                                    ),
+                            ),
+                    ).with_priority(1))
+                    .child(deferred(
+                        div()
+                            .id("diff-ctx-backdrop")
+                            .absolute()
+                            .top(px(-2000.0))
+                            .left(px(-2000.0))
+                            .w(px(8000.0))
+                            .h(px(8000.0))
+                            .occlude()
+                            .on_mouse_down(MouseButton::Left, {
+                                let sel_state = sel_state.clone();
+                                move |_, _, cx| {
+                                    let mut s = sel_state.get();
+                                    s.context_menu = None;
+                                    sel_state.set(s);
+                                    cx.stop_propagation();
+                                }
+                            }),
+                    ).with_priority(0));
+
+                break; // only one context menu at a time
+            }
+        }
 
         content.into_any_element()
     }

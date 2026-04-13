@@ -56,7 +56,6 @@ use alacritty_terminal::index::{Column as AlacColumn, Line as AlacLine, Point as
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::index::Side as AlacSide;
 use gpui::{Edges, *};
-use gpui_component::menu::ContextMenuExt as _;
 use std::io::{Read, Write};
 
 // Actions for context menu and keybindings
@@ -1249,12 +1248,6 @@ impl Render for TerminalView {
             .on_action(cx.listener(|this, _: &TermClear, _window, _cx| {
                 this.write_to_pty(b"\x0c");
             }))
-            .context_menu(|menu, _window, _cx| {
-                menu.menu("Copy", Box::new(TermCopy))
-                    .menu("Paste", Box::new(TermPaste))
-                    .separator()
-                    .menu("Clear", Box::new(TermClear))
-            })
             .child({
                 let bounds_for_prepaint = bounds_storage.clone();
                 let entity_for_drag = cx.entity().downgrade();

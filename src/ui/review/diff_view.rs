@@ -1,3 +1,4 @@
+use crate::ui::components::scrollbar;
 use crate::ui::theme as t;
 use gpui::*;
 use super::diff_engine::{DiffLineKind, FileDiff, DiffStats, DiffHunk};
@@ -13,16 +14,14 @@ const GUTTER_WIDTH: f32 = 48.0;
 const GUTTER_PAD: f32 = 8.0;
 const CONTENT_PAD: f32 = 6.0;
 
-// Scrollbar constants
-const SCROLLBAR_TRACK_HEIGHT: f32 = 14.0;
-const THUMB_WIDTH: f32 = 6.0;
-const THUMB_ACTIVE_WIDTH: f32 = 8.0;
-const THUMB_INSET: f32 = 4.0;
-const THUMB_RADIUS: f32 = 3.0;
-const THUMB_ACTIVE_RADIUS: f32 = 4.0;
-const MIN_THUMB_SIZE: f32 = 48.0;
-const FADE_OUT_DELAY: f32 = 2.0;
-const FADE_OUT_DURATION: f32 = 3.0;
+use scrollbar::{
+    TRACK_SIZE as SCROLLBAR_TRACK_HEIGHT,
+    THUMB_WIDTH, THUMB_ACTIVE_WIDTH, THUMB_INSET,
+    THUMB_RADIUS, THUMB_ACTIVE_RADIUS, MIN_THUMB_SIZE,
+    FADE_OUT_DELAY, FADE_OUT_DURATION,
+};
+const AUTO_SCROLL_EDGE: f32 = 30.0;
+const AUTO_SCROLL_SPEED: f32 = 8.0;
 
 // ── Display line ────────────────────────────────────────────────
 
@@ -217,6 +216,45 @@ fn highlight_to_runs(
     runs
 }
 
+// ── Selection state (persisted across frames) ───────────────────
+
+#[derive(Clone, Copy, Default)]
+pub struct SelectionInner {
+    pub selecting: bool,
+    pub anchor_line: usize,
+    pub anchor_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
+    pub context_menu: Option<Point<Pixels>>,
+}
+
+impl SelectionInner {
+    pub fn has_selection(&self) -> bool {
+        self.anchor_line != self.end_line || self.anchor_col != self.end_col
+    }
+
+    pub fn ordered(&self) -> (usize, usize, usize, usize) {
+        if self.anchor_line < self.end_line
+            || (self.anchor_line == self.end_line && self.anchor_col <= self.end_col)
+        {
+            (self.anchor_line, self.anchor_col, self.end_line, self.end_col)
+        } else {
+            (self.end_line, self.end_col, self.anchor_line, self.anchor_col)
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct SelectionState(Rc<Cell<SelectionInner>>);
+
+impl SelectionState {
+    pub fn new() -> Self {
+        Self(Rc::new(Cell::new(SelectionInner::default())))
+    }
+    pub fn get(&self) -> SelectionInner { self.0.get() }
+    pub fn set(&self, v: SelectionInner) { self.0.set(v); }
+}
+
 // ── Scroll + scrollbar state (persisted across frames) ──────────
 
 #[derive(Clone, Copy)]
@@ -261,6 +299,10 @@ pub struct DiffBlock {
     lines: Arc<Vec<DiffDisplayLine>>,
     highlights: Option<Arc<HighlightCache>>,
     scroll: DiffScrollState,
+    selection: SelectionState,
+    parent_scroll: Option<ScrollHandle>,
+    focus_handle: FocusHandle,
+    char_width_cache: Rc<Cell<Option<Pixels>>>,
 }
 
 impl DiffBlock {
@@ -269,8 +311,12 @@ impl DiffBlock {
         lines: Arc<Vec<DiffDisplayLine>>,
         highlights: Option<Arc<HighlightCache>>,
         scroll: DiffScrollState,
+        selection: SelectionState,
+        parent_scroll: Option<ScrollHandle>,
+        focus_handle: FocusHandle,
+        char_width_cache: Rc<Cell<Option<Pixels>>>,
     ) -> Self {
-        Self { id, lines, highlights, scroll }
+        Self { id, lines, highlights, scroll, selection, parent_scroll, focus_handle, char_width_cache }
     }
 }
 
@@ -279,6 +325,7 @@ pub struct DiffPrepaint {
     shaped_lines: Vec<(DiffDisplayLine, Option<ShapedLine>, Option<ShapedLine>)>,
     hitbox: Hitbox,
     bar_hitbox: Hitbox,
+    char_width: Pixels,
     content_width: Pixels,
     thumb_bounds: Option<ThumbGeometry>,
 }
@@ -336,6 +383,23 @@ impl Element for DiffBlock {
     ) -> DiffPrepaint {
         let font_sz = px(13.0);
         let mono = font("Menlo");
+
+        let char_width = match self.char_width_cache.get() {
+            Some(w) => w,
+            None => {
+                let run = TextRun {
+                    len: 1,
+                    font: mono.clone(),
+                    color: Hsla::default(),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                };
+                let w = window.text_system().shape_line("M".into(), font_sz, &[run], None).width;
+                self.char_width_cache.set(Some(w));
+                w
+            }
+        };
 
         let mut max_content_w = px(0.0);
         let mut shaped_lines = Vec::with_capacity(self.lines.len());
@@ -457,6 +521,7 @@ impl Element for DiffBlock {
             bar_hitbox,
             content_width,
             thumb_bounds,
+            char_width,
         }
     }
 
@@ -498,6 +563,55 @@ impl Element for DiffBlock {
                 }
             }
         });
+
+        // 1b) Selection highlight (character-precise)
+        {
+            let sel = self.selection.get();
+            if sel.has_selection() {
+                let (sl, sc, el, ec) = sel.ordered();
+                let sel_color = t::selection_bg();
+                let cw = prepaint.char_width;
+                let content_x = gutter_x_end + px(CONTENT_PAD) - scroll_x;
+
+                window.with_content_mask(Some(ContentMask { bounds: content_bounds }), |window| {
+                    for i in sl..=el.min(line_count.saturating_sub(1)) {
+                        let y = bounds.origin.y + px(i as f32 * LINE_HEIGHT);
+                        let line_len = prepaint.shaped_lines.get(i)
+                            .map(|(l, _, _)| l.content.len())
+                            .unwrap_or(0);
+
+                        let (col_start, col_end) = if sl == el {
+                            // Single line: exact column range
+                            (sc, ec)
+                        } else if i == sl {
+                            // First line: from start col to end of line
+                            (sc, line_len)
+                        } else if i == el {
+                            // Last line: from start to end col
+                            (0, ec)
+                        } else {
+                            // Middle lines: full line
+                            (0, line_len)
+                        };
+
+                        let x_start = content_x + cw * col_start as f32;
+                        let w = if col_end > col_start {
+                            cw * (col_end - col_start) as f32
+                        } else {
+                            content_bounds.size.width - (x_start - content_bounds.origin.x)
+                        };
+
+                        window.paint_quad(fill(
+                            Bounds {
+                                origin: point(x_start, y),
+                                size: size(w, line_h),
+                            },
+                            sel_color,
+                        ));
+                    }
+                });
+            }
+        }
 
         // 2) Content text (clipped to content area, scrolled)
         window.with_content_mask(Some(ContentMask { bounds: content_bounds }), |window| {
@@ -652,7 +766,142 @@ impl Element for DiffBlock {
             });
         }
 
-        // 5) Scroll wheel handler
+        // 5) Selection mouse handlers
+        {
+            let selection = self.selection.clone();
+            let bounds_for_sel = bounds;
+            let line_count_for_sel = line_count;
+            let char_w = prepaint.char_width;
+            let content_x_base = gutter_x_end + px(CONTENT_PAD) - scroll_x;
+
+            // Convert mouse position to (line, col)
+            let pos_to_line_col = move |pos: Point<Pixels>| -> (usize, usize) {
+                let line = {
+                    let rel = f32::from(pos.y - bounds_for_sel.origin.y);
+                    ((rel / LINE_HEIGHT) as usize).min(line_count_for_sel.saturating_sub(1))
+                };
+                let col = {
+                    let rel_x = f32::from(pos.x - content_x_base);
+                    if rel_x <= 0.0 { 0 } else { (rel_x / f32::from(char_w)) as usize }
+                };
+                (line, col)
+            };
+
+            // MouseDown: start selection
+            window.on_mouse_event({
+                let selection = selection.clone();
+                let hitbox_id = prepaint.hitbox.id;
+                let pos_to_lc = pos_to_line_col;
+                let focus = self.focus_handle.clone();
+                move |event: &MouseDownEvent, phase, window, _cx| {
+                    if !phase.bubble() { return; }
+                    if event.button != MouseButton::Left { return; }
+                    if !hitbox_id.is_hovered(window) { return; }
+                    focus.focus(window);
+                    let (line, col) = pos_to_lc(event.position);
+                    let mut s = selection.get();
+                    s.selecting = true;
+                    s.anchor_line = line;
+                    s.anchor_col = col;
+                    s.end_line = line;
+                    s.end_col = col;
+                    selection.set(s);
+                }
+            });
+
+            // MouseMove: extend selection + auto-scroll
+            window.on_mouse_event({
+                let selection = selection.clone();
+                let parent_scroll = self.parent_scroll.clone();
+                let pos_to_lc = pos_to_line_col;
+                move |event: &MouseMoveEvent, _phase, window, _cx| {
+                    let mut s = selection.get();
+                    if !s.selecting { return; }
+                    let (line, col) = pos_to_lc(event.position);
+                    let mut changed = false;
+                    if line != s.end_line || col != s.end_col {
+                        s.end_line = line;
+                        s.end_col = col;
+                        changed = true;
+                    }
+
+                    // Auto-scroll the parent container when dragging near edges
+                    if let Some(ref sh) = parent_scroll {
+                        let scroll_bounds = sh.bounds();
+                        let edge = px(AUTO_SCROLL_EDGE);
+                        let speed = px(AUTO_SCROLL_SPEED);
+                        let mouse_y = event.position.y;
+                        if mouse_y < scroll_bounds.top() + edge {
+                            let mut offset = sh.offset();
+                            offset.y = (offset.y + speed).min(px(0.0));
+                            sh.set_offset(offset);
+                            changed = true;
+                        } else if mouse_y > scroll_bounds.bottom() - edge {
+                            let mut offset = sh.offset();
+                            offset.y -= speed;
+                            sh.set_offset(offset);
+                            changed = true;
+                        }
+                    }
+
+                    if changed {
+                        selection.set(s);
+                        window.refresh();
+                    }
+                }
+            });
+
+            // MouseUp: finish selection
+            window.on_mouse_event({
+                let selection = selection.clone();
+                move |_event: &MouseUpEvent, phase, _window, _cx| {
+                    if !phase.bubble() { return; }
+                    let mut s = selection.get();
+                    if s.selecting {
+                        s.selecting = false;
+                        selection.set(s);
+                    }
+                }
+            });
+
+            // Right-click: show context menu if inside selection, clear otherwise
+            window.on_mouse_event({
+                let selection = selection.clone();
+                let pos_to_lc = pos_to_line_col;
+                move |event: &MouseDownEvent, phase, window, _cx| {
+                    if !phase.bubble() { return; }
+                    if event.button != MouseButton::Right { return; }
+                    let mut s = selection.get();
+                    if !s.has_selection() { return; }
+
+                    let (click_line, click_col) = pos_to_lc(event.position);
+                    let (sl, sc, el, ec) = s.ordered();
+
+                    let inside = if sl == el {
+                        click_line == sl && click_col >= sc && click_col <= ec
+                    } else {
+                        (click_line == sl && click_col >= sc)
+                            || (click_line == el && click_col <= ec)
+                            || (click_line > sl && click_line < el)
+                    };
+
+                    if inside {
+                        s.context_menu = Some(event.position);
+                    } else {
+                        s.anchor_line = 0;
+                        s.anchor_col = 0;
+                        s.end_line = 0;
+                        s.end_col = 0;
+                        s.context_menu = None;
+                    }
+                    selection.set(s);
+                    window.refresh();
+                }
+            });
+
+        }
+
+        // 6) Scroll wheel handler
         let scroll = self.scroll.clone();
         let hitbox_id = prepaint.hitbox.id;
         let content_w = prepaint.content_width;
@@ -685,6 +934,33 @@ fn truncate_path_middle(path: &str) -> String {
     let filename = parts[parts.len() - 1];
     let first = parts[0];
     format!("{}/\u{2026}/{}", first, filename)
+}
+
+pub fn copy_selection(sel: &SelectionInner, lines: &[DiffDisplayLine], cx: &mut App) {
+    let (sl, sc, el, ec) = sel.ordered();
+    let mut text = String::new();
+    for i in sl..=el.min(lines.len().saturating_sub(1)) {
+        if lines[i].is_hunk_header { continue; }
+        let content = &lines[i].content;
+        let chars: Vec<char> = content.chars().collect();
+        let len = chars.len();
+        if sl == el {
+            let s = sc.min(len);
+            let e = ec.min(len);
+            text.extend(&chars[s..e]);
+        } else if i == sl {
+            let s = sc.min(len);
+            text.extend(&chars[s..]);
+            text.push('\n');
+        } else if i == el {
+            let e = ec.min(len);
+            text.extend(&chars[..e]);
+        } else {
+            text.push_str(content);
+            text.push('\n');
+        }
+    }
+    cx.write_to_clipboard(ClipboardItem::new_string(text));
 }
 
 fn line_colors(line: &DiffDisplayLine) -> (Rgba, Option<Rgba>) {
@@ -728,26 +1004,51 @@ fn scrollbar_opacity(scroll: &DiffScrollState) -> f32 {
 
 // ── File section (header + diff block) ──────────────────────────
 
-pub fn render_file_section(
-    path: &str,
-    status: FileStatus,
-    stats: &DiffStats,
-    diff: Option<&FileDiff>,
-    lines: Option<&Arc<Vec<DiffDisplayLine>>>,
-    scroll: &DiffScrollState,
-    expanded: &Rc<Cell<bool>>,
-    highlights: Option<&Arc<HighlightCache>>,
-    on_keep: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    on_discard: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-) -> Div {
-    let mut el = div().flex().flex_col().flex_shrink_0().pb_1();
-    el = el.child(render_header(path, status, stats, expanded, on_keep, on_discard));
+pub struct FileSectionParams<'a> {
+    pub path: &'a str,
+    pub status: FileStatus,
+    pub stats: DiffStats,
+    pub diff: Option<&'a FileDiff>,
+    pub lines: Option<&'a Arc<Vec<DiffDisplayLine>>>,
+    pub highlights: Option<&'a Arc<HighlightCache>>,
+    pub scroll: &'a DiffScrollState,
+    pub selection: &'a SelectionState,
+    pub expanded: &'a Rc<Cell<bool>>,
+    pub focus_handle: &'a FocusHandle,
+    pub char_width_cache: &'a Rc<Cell<Option<Pixels>>>,
+    pub parent_scroll: Option<&'a ScrollHandle>,
+    pub on_keep: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
+    pub on_discard: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
+}
 
-    if !expanded.get() {
+pub fn render_file_section(p: FileSectionParams) -> Stateful<Div> {
+    let mut el = div()
+        .id(SharedString::from(format!("file-section-{}", p.path)))
+        .track_focus(p.focus_handle)
+        .flex().flex_col().flex_shrink_0().pb_1();
+    {
+        let sel_for_key = p.selection.clone();
+        let lines_for_key: Option<Arc<Vec<DiffDisplayLine>>> = p.lines.cloned();
+        el = el.on_key_down(move |event, _window, cx| {
+            if event.keystroke.key.as_str() == "c" && event.keystroke.modifiers.platform {
+                let s = sel_for_key.get();
+                if s.has_selection() {
+                    if let Some(ref l) = lines_for_key {
+                        copy_selection(&s, l, cx);
+                        cx.stop_propagation();
+                    }
+                }
+            }
+        });
+    }
+
+    el = el.child(render_header(p.path, p.status, &p.stats, p.expanded, p.on_discard, p.on_keep));
+
+    if !p.expanded.get() {
         return el;
     }
 
-    if let (Some(diff), Some(lines)) = (diff, lines) {
+    if let (Some(diff), Some(lines)) = (p.diff, p.lines) {
         if diff.is_binary {
             el = el.child(
                 div().px_3().py_1().text_xs().text_color(t::text_faint())
@@ -759,10 +1060,14 @@ pub fn render_file_section(
             el = el.child(
                 div().mx_1().flex_shrink_0().h(px(block_height)).child(
                     DiffBlock::new(
-                        ElementId::Name(SharedString::from(format!("diff-{}", path))),
+                        ElementId::Name(SharedString::from(format!("diff-{}", p.path))),
                         lines.clone(),
-                        highlights.cloned(),
-                        scroll.clone(),
+                        p.highlights.cloned(),
+                        p.scroll.clone(),
+                        p.selection.clone(),
+                        p.parent_scroll.cloned(),
+                        p.focus_handle.clone(),
+                        p.char_width_cache.clone(),
                     ),
                 ),
             );
@@ -777,8 +1082,8 @@ fn render_header(
     status: FileStatus,
     stats: &DiffStats,
     expanded: &Rc<Cell<bool>>,
-    on_keep: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    on_discard: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+    on_discard: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
+    on_keep: Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
 ) -> impl IntoElement {
     let is_expanded = expanded.get();
     let chevron = if is_expanded { "▾" } else { "▸" };
@@ -820,35 +1125,32 @@ fn render_header(
             .child(SharedString::from(format!("-{}", stats.deletions))));
     }
 
-    // Per-file action buttons (stop propagation so they don't toggle the accordion)
-    if let Some(on_discard) = on_discard {
-        h = h.child(
-            div().id(SharedString::from(format!("discard-{}", path)))
-                .ml_1().px_1p5().py(px(2.0)).rounded(px(3.0))
-                .text_xs().text_color(t::text_dim()).flex_shrink_0()
-                .cursor_pointer()
-                .hover(|s: StyleRefinement| s.bg(t::bg_hover()).text_color(t::diff_del_text()))
-                .on_click(move |event, window, cx| {
-                    cx.stop_propagation();
-                    on_discard(event, window, cx);
-                })
-                .child("Discard"),
-        );
-    }
-    if let Some(on_keep) = on_keep {
-        h = h.child(
-            div().id(SharedString::from(format!("keep-{}", path)))
-                .px_1p5().py(px(2.0)).rounded(px(3.0))
-                .text_xs().text_color(t::text_dim()).flex_shrink_0()
-                .cursor_pointer()
-                .hover(|s: StyleRefinement| s.bg(t::bg_hover()).text_color(t::diff_add_text()))
-                .on_click(move |event, window, cx| {
-                    cx.stop_propagation();
-                    on_keep(event, window, cx);
-                })
-                .child("Keep"),
-        );
-    }
+    // Per-file action buttons — always rendered for consistent height,
+    // but invisible when collapsed to prevent layout shift.
+    h = h.child(
+        div().id(SharedString::from(format!("discard-{}", path)))
+            .ml_1().px_1p5().py(px(2.0)).rounded(px(3.0))
+            .text_xs().text_color(t::text_dim()).flex_shrink_0()
+            .cursor_pointer()
+            .hover(|s: StyleRefinement| s.bg(t::bg_hover()).text_color(t::diff_del_text()))
+            .on_click(move |event, window, cx| {
+                cx.stop_propagation();
+                on_discard(event, window, cx);
+            })
+            .child("Discard"),
+    );
+    h = h.child(
+        div().id(SharedString::from(format!("keep-{}", path)))
+            .px_1p5().py(px(2.0)).rounded(px(3.0))
+            .text_xs().text_color(t::text_dim()).flex_shrink_0()
+            .cursor_pointer()
+            .hover(|s: StyleRefinement| s.bg(t::bg_hover()).text_color(t::diff_add_text()))
+            .on_click(move |event, window, cx| {
+                cx.stop_propagation();
+                on_keep(event, window, cx);
+            })
+            .child("Keep"),
+    );
 
     h
 }

@@ -5,15 +5,15 @@ use std::time::Instant;
 
 // ── Constants ──────────────────────────────────────────────────
 
-const TRACK_WIDTH: f32 = 14.0;
-const THUMB_WIDTH: f32 = 6.0;
-const THUMB_ACTIVE_WIDTH: f32 = 8.0;
-const THUMB_INSET: f32 = 4.0;
-const THUMB_RADIUS: f32 = 3.0;
-const THUMB_ACTIVE_RADIUS: f32 = 4.0;
-const MIN_THUMB_HEIGHT: f32 = 48.0;
-const FADE_OUT_DELAY: f32 = 2.0;
-const FADE_OUT_DURATION: f32 = 3.0;
+pub const TRACK_SIZE: f32 = 14.0;
+pub const THUMB_WIDTH: f32 = 6.0;
+pub const THUMB_ACTIVE_WIDTH: f32 = 8.0;
+pub const THUMB_INSET: f32 = 4.0;
+pub const THUMB_RADIUS: f32 = 3.0;
+pub const THUMB_ACTIVE_RADIUS: f32 = 4.0;
+pub const MIN_THUMB_SIZE: f32 = 48.0;
+pub const FADE_OUT_DELAY: f32 = 2.0;
+pub const FADE_OUT_DURATION: f32 = 3.0;
 
 // ── State ──────────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ pub fn paint_scrollbar(
 
     let track_h = viewport_h;
     let thumb_h = (viewport_h / content_h * track_h)
-        .max(MIN_THUMB_HEIGHT)
+        .max(MIN_THUMB_SIZE)
         .min(track_h);
     let scroll_ratio = f32::from(-offset.y) / (content_h - viewport_h);
     let thumb_top = scroll_ratio * (track_h - thumb_h);
@@ -171,10 +171,10 @@ pub fn paint_scrollbar(
     let track_bounds = Bounds::new(
         point(
             viewport_bounds.origin.x + viewport_bounds.size.width
-                - px(TRACK_WIDTH),
+                - px(TRACK_SIZE),
             viewport_bounds.origin.y,
         ),
-        size(px(TRACK_WIDTH), viewport_bounds.size.height),
+        size(px(TRACK_SIZE), viewport_bounds.size.height),
     );
 
     let scroll = scroll_handle.clone();
