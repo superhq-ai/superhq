@@ -74,6 +74,12 @@ impl TerminalPanel {
         }
     }
 
+    pub fn active_workspace_name(&self, cx: &App) -> Option<String> {
+        let ws_id = self.active_workspace_id?;
+        let session = self.sessions.get(&ws_id)?;
+        Some(session.read(cx).workspace_name.clone())
+    }
+
     /// Get the highest-priority agent status across all tabs in a workspace,
     /// along with the names of agents at that priority level.
     pub fn workspace_agent_status(&self, ws_id: i64, cx: &App) -> (Vec<String>, super::session::AgentStatus) {

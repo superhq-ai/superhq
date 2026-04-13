@@ -47,7 +47,7 @@ impl Render for Toast {
 
         div()
             .absolute()
-            .top(px(8.0))
+            .top(px(44.0)) // below 36px titlebar + 8px padding
             .w_full()
             .flex()
             .justify_center()

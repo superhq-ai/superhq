@@ -13,6 +13,7 @@ use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 
 use tab_bar::{DraggedTab, DraggedTabView};
+use session::TabKind;
 use crate::ui::theme as t;
 
 actions!(terminal_panel, [
@@ -52,6 +53,8 @@ impl Render for TerminalPanel {
                 let active_tab_checkpointing = s.tabs.get(active_tab_idx)
                     .filter(|t| t.checkpointing)
                     .is_some();
+                let active_tab_is_host = s.tabs.get(active_tab_idx)
+                    .map_or(false, |t| matches!(&t.kind, TabKind::HostShell { .. }));
 
                 let tab_scroll = s.tab_scroll.clone();
 
@@ -694,24 +697,27 @@ impl Render for TerminalPanel {
                             .bg(t::bg_elevated())
                             .border_t_1()
                             .border_color(t::border())
-                            // Right: ports
-                            .child(
-                                status_item(
+                            .child({
+                                let item = status_item(
                                     "ports-status-btn",
                                     "icons/network.svg",
                                     if port_count > 0 { format!("Ports: {}", port_count) } else { "Ports".to_string() },
-                                )
-                                .cursor_pointer()
-                                .hover(|s| s.bg(t::bg_hover()).text_color(t::text_muted()))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    if let Some(ref cb) = this.on_open_port_dialog {
-                                        let (sb, th) = this.get_active_sandbox(ws_id, cx)
-                                            .map(|(sb, th)| (Some(sb), th))
-                                            .unwrap_or_else(|| (None, this.tokio_handle.clone()));
-                                        cb(ws_id, sb, th, window, cx);
-                                    }
-                                })),
-                            ),
+                                );
+                                if active_tab_is_host {
+                                    item.opacity(0.3)
+                                } else {
+                                    item.cursor_pointer()
+                                        .hover(|s| s.bg(t::bg_hover()).text_color(t::text_muted()))
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            if let Some(ref cb) = this.on_open_port_dialog {
+                                                let (sb, th) = this.get_active_sandbox(ws_id, cx)
+                                                    .map(|(sb, th)| (Some(sb), th))
+                                                    .unwrap_or_else(|| (None, this.tokio_handle.clone()));
+                                                cb(ws_id, sb, th, window, cx);
+                                            }
+                                        }))
+                                }
+                            }),
                     );
                 }
 

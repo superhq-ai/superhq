@@ -27,6 +27,7 @@ actions!(
         ActivateTab4, ActivateTab5, ActivateTab6,
         ActivateTab7, ActivateTab8, ActivateTab9,
         ToggleRightDock,
+        ToggleLeftSidebar,
         OpenPortsDialog,
     ]
 );
@@ -66,6 +67,7 @@ struct AppView {
     settings: Option<Entity<SettingsPanel>>,
     setup: Option<Entity<SetupScreen>>,
     sidebar_size: Pixels,
+    sidebar_collapsed: bool,
     cmd_held: bool,
     ctrl_held: bool,
     focus_handle: FocusHandle,
@@ -142,6 +144,7 @@ impl AppView {
             settings: None,
             setup,
             sidebar_size: px(240.0),
+            sidebar_collapsed: false,
             cmd_held: false,
             ctrl_held: false,
             focus_handle: cx.focus_handle(),
@@ -231,6 +234,7 @@ impl AppView {
                     sidebar.update(cx, |view: &mut WorkspaceListView, cx| view.refresh(cx));
                     this.update(cx, |app, cx| {
                         app.dialog = None;
+                        app.sidebar_collapsed = false;
                         app.focus_handle.focus(window);
                         cx.notify();
                     }).ok();
@@ -303,6 +307,10 @@ impl Render for AppView {
                 });
                 cx.notify();
             }))
+            .on_action(cx.listener(|this, _: &ToggleLeftSidebar, _, cx| {
+                this.sidebar_collapsed = !this.sidebar_collapsed;
+                cx.notify();
+            }))
             .on_action(cx.listener(|this, _: &OpenPortsDialog, window, cx| {
                 let ws_id = match this.terminal.read(cx).active_workspace_id {
                     Some(id) => id,
@@ -332,8 +340,38 @@ impl Render for AppView {
                             window.titlebar_double_click();
                         }
                     })
-                    // Left: spacer for traffic lights
-                    .child(div().w(px(78.0)).flex_shrink_0())
+                    // Left: traffic lights spacer + sidebar toggle
+                    .child(div().w(px(72.0)).flex_shrink_0())
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .child(
+                                div()
+                                    .id("toggle-left-sidebar")
+                                    .p(px(5.0))
+                                    .rounded(px(4.0))
+                                    .cursor_pointer()
+                                    .hover(|s: StyleRefinement| s.bg(t::bg_hover()))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.sidebar_collapsed = !this.sidebar_collapsed;
+                                        cx.notify();
+                                    }))
+                                    .child(
+                                        svg()
+                                            .path(SharedString::from("icons/sidebar-left.svg"))
+                                            .size(px(14.0))
+                                            .text_color(if self.sidebar_collapsed {
+                                                t::text_ghost()
+                                            } else {
+                                                t::text_secondary()
+                                            }),
+                                    ),
+                            ),
+                    )
                     // Center: title
                     .child(
                         div()
@@ -420,8 +458,8 @@ impl Render for AppView {
                             });
                         }
                     })
-                    // Sidebar
-                    .child(
+                    // Sidebar (collapsible)
+                    .when(!self.sidebar_collapsed, |el| el.child(
                         div()
                             .id("sidebar-container")
                             .h_full()
@@ -488,7 +526,7 @@ impl Render for AppView {
                                     ),
                             ),
                     )
-                    // Sidebar resize handle — invisible 6px hit area, 2px highlight on hover
+                    // Sidebar resize handle
                     .child(
                         div()
                             .id("sidebar-resize")
@@ -509,7 +547,7 @@ impl Render for AppView {
                                     .h_full()
                                     .group_hover("sidebar-resize-group", |s| s.bg(t::accent())),
                             ),
-                    )
+                    ))
                     // Center terminal
                     .child(
                         div()
@@ -583,6 +621,7 @@ fn main() -> Result<()> {
             KeyBinding::new("cmd-n", NewWorkspaceAction, None),
             KeyBinding::new("cmd-,", OpenSettingsAction, None),
             KeyBinding::new("cmd-b", ToggleRightDock, None),
+            KeyBinding::new("cmd-shift-b", ToggleLeftSidebar, None),
             KeyBinding::new("cmd-shift-p", OpenPortsDialog, None),
             // Tab navigation
             KeyBinding::new("cmd-w", ui::terminal::CloseActiveTab, Some("Terminal")),
@@ -633,11 +672,18 @@ fn main() -> Result<()> {
                 // Global keystroke interceptor — fires before all element handlers
                 let sidebar = view.read(cx).sidebar.clone();
                 let terminal = view.read(cx).terminal.clone();
+                let toast = view.read(cx).toast.clone();
                 let app_view = view.clone();
                 let sub = cx.intercept_keystrokes({
                     let sidebar = sidebar.clone();
                     let terminal = terminal.clone();
+                    let toast = toast.clone();
                     move |event, window, cx| {
+                        let show_workspace_toast = |cx: &mut App| {
+                            if let Some(name) = terminal.read(cx).active_workspace_name(cx) {
+                                toast.update(cx, |t, cx| t.show(format!("Switched to {name}"), cx));
+                            }
+                        };
                         let key = event.keystroke.key.as_str();
                         let m = &event.keystroke.modifiers;
                         // cmd+1..9 → switch workspace
@@ -652,6 +698,8 @@ fn main() -> Result<()> {
                                     v.activate_by_index(n, window, cx);
                                     v.set_show_badges(false, cx);
                                 });
+                                // Show workspace name in toast
+                                show_workspace_toast(cx);
                                 app_view.update(cx, |this, _cx| {
                                     this.cmd_held = false;
                                     this.focus_handle.focus(window);
@@ -708,10 +756,16 @@ fn main() -> Result<()> {
                             match key {
                                 "}" | "]" => {
                                     sidebar.update(cx, |v, cx| v.next_workspace(window, cx));
+                                    if let Some(name) = terminal.read(cx).active_workspace_name(cx) {
+                                        toast.update(cx, |t, cx| t.show(format!("Switched to {name}"), cx));
+                                    }
                                     cx.stop_propagation();
                                 }
                                 "{" | "[" => {
                                     sidebar.update(cx, |v, cx| v.prev_workspace(window, cx));
+                                    if let Some(name) = terminal.read(cx).active_workspace_name(cx) {
+                                        toast.update(cx, |t, cx| t.show(format!("Switched to {name}"), cx));
+                                    }
                                     cx.stop_propagation();
                                 }
                                 _ => {}
