@@ -88,6 +88,10 @@ impl WorkspaceListView {
         }
     }
 
+    pub fn workspace_count(&self) -> usize {
+        self.workspace_views.len()
+    }
+
     pub fn set_show_badges(&mut self, show: bool, cx: &mut Context<Self>) {
         self.cmd_held = show;
         for (i, view) in self.workspace_views.iter().enumerate() {

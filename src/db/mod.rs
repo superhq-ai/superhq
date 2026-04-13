@@ -80,6 +80,12 @@ impl Database {
             conn.execute("INSERT INTO _migrations (version) VALUES (1)", [])?;
         }
 
+        if current < 2 {
+            conn.execute_batch(include_str!("../../migrations/002_auto_launch_agent.sql"))
+                .ok(); // ignore if column already exists
+            conn.execute("INSERT OR REPLACE INTO _migrations (version) VALUES (2)", [])?;
+        }
+
         Ok(())
     }
 

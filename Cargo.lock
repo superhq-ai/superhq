@@ -5926,6 +5926,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "ignore",
+ "open",
  "parking_lot",
  "portable-pty",
  "reqwest",

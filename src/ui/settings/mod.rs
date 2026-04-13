@@ -1,3 +1,4 @@
+mod about;
 pub mod card;
 mod general;
 mod providers;
@@ -7,6 +8,7 @@ mod shortcuts;
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 use crate::ui::components::actions::Cancel;
+use crate::ui::components::scrollbar::{self, ScrollbarState};
 use crate::ui::components::TextInput;
 use crate::ui::components::Toast;
 use std::sync::Arc;
@@ -36,6 +38,7 @@ pub enum SettingsTab {
     Secrets,
     Sandbox,
     Shortcuts,
+    About,
 }
 
 impl SettingsTab {
@@ -45,11 +48,18 @@ impl SettingsTab {
             Self::Secrets => "Providers",
             Self::Sandbox => "Sandbox",
             Self::Shortcuts => "Shortcuts",
+            Self::About => "About",
         }
     }
 
     fn all() -> &'static [SettingsTab] {
-        &[SettingsTab::General, SettingsTab::Secrets, SettingsTab::Sandbox, SettingsTab::Shortcuts]
+        &[
+            SettingsTab::General,
+            SettingsTab::Secrets,
+            SettingsTab::Sandbox,
+            SettingsTab::Shortcuts,
+            SettingsTab::About,
+        ]
     }
 }
 
@@ -88,6 +98,7 @@ pub struct SettingsPanel {
     pub(crate) db: Arc<Database>,
     pub(crate) active_tab: SettingsTab,
     pub(crate) default_agent_id: Option<i64>,
+    pub(crate) auto_launch_agent: bool,
     agent_dropdown: Entity<crate::ui::components::Select>,
     pub(crate) secret_rows: Vec<SecretRow>,
     pub(crate) sandbox_inputs: SandboxInputs,
@@ -96,6 +107,8 @@ pub struct SettingsPanel {
     pub(crate) oauth_cancel: Option<tokio::sync::oneshot::Sender<()>>,
     on_close: Box<dyn Fn(&mut Window, &mut App) + 'static>,
     focus_handle: FocusHandle,
+    scroll_handle: ScrollHandle,
+    scrollbar_state: ScrollbarState,
 }
 
 impl SettingsPanel {
@@ -188,6 +201,7 @@ impl SettingsPanel {
             db,
             active_tab: SettingsTab::General,
             default_agent_id,
+            auto_launch_agent: settings.as_ref().map(|s| s.auto_launch_agent).unwrap_or(true),
             agent_dropdown,
             secret_rows,
             sandbox_inputs,
@@ -196,6 +210,8 @@ impl SettingsPanel {
             oauth_cancel: None,
             on_close: Box::new(on_close),
             focus_handle,
+            scroll_handle: ScrollHandle::new(),
+            scrollbar_state: ScrollbarState::new(),
         }
     }
 
@@ -330,20 +346,58 @@ impl Render for SettingsPanel {
                             .child(
                                 div()
                                     .flex_grow()
-                                    .p_6()
-                                    .child(match self.active_tab {
-                                        SettingsTab::General => {
-                                            self.render_general_tab(cx).into_any_element()
-                                        }
-                                        SettingsTab::Secrets => {
-                                            self.render_secrets_tab(cx).into_any_element()
-                                        }
-                                        SettingsTab::Sandbox => {
-                                            self.render_sandbox_tab(cx).into_any_element()
-                                        }
-                                        SettingsTab::Shortcuts => {
-                                            Self::render_shortcuts_tab().into_any_element()
-                                        }
+                                    .min_h_0()
+                                    .relative()
+                                    .child({
+                                        let sb_for_scroll = self.scrollbar_state.clone();
+                                        div()
+                                            .id("settings-content")
+                                            .absolute()
+                                            .top_0()
+                                            .left_0()
+                                            .size_full()
+                                            .overflow_y_scroll()
+                                            .track_scroll(&self.scroll_handle)
+                                            .on_scroll_wheel(move |_, _, _| {
+                                                sb_for_scroll.did_scroll();
+                                            })
+                                            .p_6()
+                                            .child(match self.active_tab {
+                                                SettingsTab::General => {
+                                                    self.render_general_tab(cx).into_any_element()
+                                                }
+                                                SettingsTab::Secrets => {
+                                                    self.render_secrets_tab(cx).into_any_element()
+                                                }
+                                                SettingsTab::Sandbox => {
+                                                    self.render_sandbox_tab(cx).into_any_element()
+                                                }
+                                                SettingsTab::Shortcuts => {
+                                                    Self::render_shortcuts_tab().into_any_element()
+                                                }
+                                                SettingsTab::About => {
+                                                    Self::render_about_tab().into_any_element()
+                                                }
+                                            })
+                                    })
+                                    .child({
+                                        let scroll_handle = self.scroll_handle.clone();
+                                        let scrollbar_state = self.scrollbar_state.clone();
+                                        canvas(
+                                            move |_, _, _| {},
+                                            move |bounds, _, window, _cx| {
+                                                scrollbar::paint_scrollbar(
+                                                    bounds,
+                                                    &scroll_handle,
+                                                    &scrollbar_state,
+                                                    window,
+                                                );
+                                            },
+                                        )
+                                        .absolute()
+                                        .top_0()
+                                        .left_0()
+                                        .size_full()
                                     }),
                             ),
                     ),

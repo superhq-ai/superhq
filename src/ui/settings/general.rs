@@ -33,7 +33,8 @@ impl SettingsPanel {
         state
     }
 
-    pub(super) fn render_general_tab(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_general_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let auto_launch = self.auto_launch_agent;
         div()
             .flex()
             .flex_col()
@@ -43,8 +44,32 @@ impl SettingsPanel {
             .child(settings_card(vec![
                 settings_row(
                     "Default Agent",
-                    "Opens automatically for new workspaces",
+                    "Agent to open for new workspaces",
                     self.agent_dropdown.clone(),
+                )
+                .into_any_element(),
+                settings_row(
+                    "Auto-launch agent",
+                    "Automatically start the default agent when opening a workspace",
+                    div()
+                        .id("auto-launch-toggle")
+                        .px_2()
+                        .py(px(3.0))
+                        .rounded(px(4.0))
+                        .cursor_pointer()
+                        .text_xs()
+                        .text_color(if auto_launch {
+                            crate::ui::theme::text_secondary()
+                        } else {
+                            crate::ui::theme::text_ghost()
+                        })
+                        .hover(|s| s.bg(crate::ui::theme::bg_hover()))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.auto_launch_agent = !this.auto_launch_agent;
+                            let _ = this.db.update_auto_launch_agent(this.auto_launch_agent);
+                            cx.notify();
+                        }))
+                        .child(if auto_launch { "On" } else { "Off" }),
                 )
                 .into_any_element(),
             ]))

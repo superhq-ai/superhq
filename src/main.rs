@@ -244,7 +244,14 @@ impl AppView {
             NewWorkspaceDialog::new(
                 db,
                 move |window, cx| {
-                    sidebar.update(cx, |view: &mut WorkspaceListView, cx| view.refresh(cx));
+                    sidebar.update(cx, |view: &mut WorkspaceListView, cx| {
+                        view.refresh(cx);
+                        // Activate the newly created workspace (last in list)
+                        let count = view.workspace_count();
+                        if count > 0 {
+                            view.activate_by_index(count - 1, window, cx);
+                        }
+                    });
                     this.update(cx, |app, cx| {
                         app.dialog = None;
                         app.sidebar_collapsed = false;

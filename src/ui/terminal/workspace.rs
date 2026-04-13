@@ -204,8 +204,11 @@ impl super::TerminalPanel {
         self.sessions.insert(ws_id, session);
         self.active_workspace_id = Some(ws_id);
 
-        // Open default agent tab if no restored tabs
-        if saved_tabs.is_empty() {
+        // Open default agent tab if no restored tabs and auto-launch is enabled
+        let auto_launch = self.db.get_settings()
+            .map(|s| s.auto_launch_agent)
+            .unwrap_or(true);
+        if saved_tabs.is_empty() && auto_launch {
             let agent = self.default_agent().cloned()
                 .or_else(|| self.agents.first().cloned());
             if let Some(agent) = agent {

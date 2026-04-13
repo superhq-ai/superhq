@@ -252,6 +252,7 @@ pub struct Settings {
     pub review_panel_width: i32,
     pub confirm_on_quit: bool,
     pub default_agent_id: Option<i64>,
+    pub auto_launch_agent: bool,
     pub sandbox_cpus: i32,
     pub sandbox_memory_mb: i64,
     pub sandbox_disk_mb: i64,

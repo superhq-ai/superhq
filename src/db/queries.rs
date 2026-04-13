@@ -337,7 +337,8 @@ impl Database {
             "SELECT id, last_active_workspace_id, theme, terminal_font_family,
                     terminal_font_size, sidebar_width, review_panel_width,
                     confirm_on_quit, default_agent_id,
-                    sandbox_cpus, sandbox_memory_mb, sandbox_disk_mb, allowed_hosts
+                    sandbox_cpus, sandbox_memory_mb, sandbox_disk_mb, allowed_hosts,
+                    auto_launch_agent
              FROM settings WHERE id = 1",
             [],
             |row| {
@@ -351,6 +352,7 @@ impl Database {
                     review_panel_width: row.get(6)?,
                     confirm_on_quit: row.get(7)?,
                     default_agent_id: row.get(8)?,
+                    auto_launch_agent: row.get::<_, bool>(13).unwrap_or(true),
                     sandbox_cpus: row.get(9)?,
                     sandbox_memory_mb: row.get(10)?,
                     sandbox_disk_mb: row.get(11)?,
@@ -376,6 +378,15 @@ impl Database {
         conn.execute(
             "UPDATE settings SET default_agent_id = ?1 WHERE id = 1",
             rusqlite::params![agent_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_auto_launch_agent(&self, enabled: bool) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE settings SET auto_launch_agent = ?1 WHERE id = 1",
+            rusqlite::params![enabled],
         )?;
         Ok(())
     }
