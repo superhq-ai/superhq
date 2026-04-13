@@ -169,6 +169,7 @@ impl AppView {
         if self.settings.is_some() {
             return;
         }
+        self.clear_badges(cx);
         self.sidebar.update(cx, |view, cx| view.clear_active(cx));
         let this = cx.entity().downgrade();
         let terminal = self.terminal.clone();
@@ -197,6 +198,7 @@ impl AppView {
     }
 
     fn open_ports_dialog(&mut self, ws_id: i64, sandbox: Option<Arc<AsyncSandbox>>, tokio_handle: tokio::runtime::Handle, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_badges(cx);
         let db = self.db.clone();
         let this = cx.entity().downgrade();
 
@@ -221,7 +223,18 @@ impl AppView {
         cx.notify();
     }
 
+    fn clear_badges(&mut self, cx: &mut Context<Self>) {
+        self.cmd_held = false;
+        self.ctrl_held = false;
+        self.sidebar.update(cx, |view, cx| view.set_show_badges(false, cx));
+        self.terminal.update(cx, |panel, cx| {
+            panel.show_tab_badges = false;
+            cx.notify();
+        });
+    }
+
     fn open_new_workspace_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_badges(cx);
         let db = self.db.clone();
         let sidebar = self.sidebar.clone();
         let this = cx.entity().downgrade();
@@ -282,9 +295,11 @@ impl Render for AppView {
             .flex()
             .flex_col()
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _window, cx| {
-                let cmd = event.modifiers.platform;
-                let ctrl = event.modifiers.control;
-                if this.cmd_held != cmd || this.ctrl_held != ctrl {
+                let has_dialog = this.dialog.is_some() || this.ports_dialog.is_some() || this.settings.is_some();
+                let cmd = !has_dialog && event.modifiers.platform;
+                let ctrl = !has_dialog && event.modifiers.control;
+                // Always update when a dialog is open to clear stale badges
+                if this.cmd_held != cmd || this.ctrl_held != ctrl || has_dialog {
                     this.cmd_held = cmd;
                     this.ctrl_held = ctrl;
                     this.sidebar.update(cx, |view, cx| view.set_show_badges(cmd, cx));
