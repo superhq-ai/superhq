@@ -801,6 +801,7 @@ impl super::TerminalPanel {
                 s.tab_scroll.scroll_to_item(s.tabs.len() - 1);
             });
 
+            self.notify_side_panel(ws_id, cx);
             cx.notify();
         }
     }

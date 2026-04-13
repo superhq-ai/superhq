@@ -47,6 +47,10 @@ impl super::TerminalPanel {
             side_panel.update(cx, |sp, cx| {
                 sp.on_sandbox_ready(sandbox, tokio_handle, cx);
             });
+        } else {
+            side_panel.update(cx, |sp, cx| {
+                sp.deactivate(cx);
+            });
         }
     }
 

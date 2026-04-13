@@ -393,6 +393,8 @@ impl Render for AppView {
                             .flex()
                             .justify_end()
                             .pr_1()
+                            .gap(px(2.0))
+                            // Dock toggle
                             .when(dock_is_active, |el| {
                                 el.child(
                                     div()
@@ -421,7 +423,35 @@ impl Render for AppView {
                                                 }),
                                         ),
                                 )
-                            }),
+                            })
+                            // Settings
+                            .child(
+                                div()
+                                    .id("titlebar-settings")
+                                    .p(px(5.0))
+                                    .rounded(px(4.0))
+                                    .cursor_pointer()
+                                    .hover(|s: StyleRefinement| s.bg(t::bg_hover()))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        if this.settings.is_some() {
+                                            this.close_settings(window, cx);
+                                        } else {
+                                            this.open_settings(window, cx);
+                                        }
+                                    }))
+                                    .child(
+                                        svg()
+                                            .path(SharedString::from("icons/settings.svg"))
+                                            .size(px(14.0))
+                                            .text_color(if show_settings {
+                                                t::text_secondary()
+                                            } else {
+                                                t::text_ghost()
+                                            }),
+                                    ),
+                            ),
                     ),
             )
             .child({
@@ -472,58 +502,6 @@ impl Render for AppView {
                             .flex_col()
                             .child(
                                 div().flex_grow().child(self.sidebar.clone()),
-                            )
-                            // Gear button at bottom of sidebar
-                            .child(
-                                div()
-                                    .border_t_1()
-                                    .border_color(t::border_subtle())
-                                    .child(
-                                        div()
-                                            .id("settings-btn")
-                                            .px_2p5()
-                                            .py_2()
-                                            .cursor_pointer()
-                                            .text_xs()
-                                            .text_color(if show_settings {
-                                                t::text_tertiary()
-                                            } else {
-                                                t::text_dim()
-                                            })
-                                            .when(show_settings, |el: Stateful<Div>| {
-                                                el.bg(t::bg_selected())
-                                            })
-                                            .hover(|s: StyleRefinement| {
-                                                s.bg(t::border_subtle())
-                                                    .text_color(t::text_tertiary())
-                                            })
-                                            .on_click(
-                                                cx.listener(|this, _, window, cx| {
-                                                    if this.settings.is_some() {
-                                                        this.close_settings(window, cx);
-                                                    } else {
-                                                        this.open_settings(window, cx);
-                                                    }
-                                                }),
-                                            )
-                                            .relative()
-                                            .child("Settings")
-                                            .when(self.cmd_held, |el: Stateful<Div>| {
-                                                el.child(
-                                                    div()
-                                                        .absolute()
-                                                        .right(px(8.0))
-                                                        .top(px(6.0))
-                                                        .px(px(5.0))
-                                                        .py(px(1.0))
-                                                        .rounded(px(4.0))
-                                                        .bg(t::bg_selected())
-                                                        .text_xs()
-                                                        .text_color(t::text_muted())
-                                                        .child("\u{2318},"),
-                                                )
-                                            }),
-                                    ),
                             ),
                     )
                     // Sidebar resize handle

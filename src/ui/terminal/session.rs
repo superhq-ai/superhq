@@ -243,11 +243,13 @@ impl WorkspaceSession {
     }
 
     /// Get the sandbox from the active tab, or fall back to any agent tab.
+    /// Returns None if the active tab is a host terminal.
     pub fn active_sandbox(&self) -> Option<Arc<AsyncSandbox>> {
         if let Some(tab) = self.tabs.get(self.active_tab) {
             match &tab.kind {
                 TabKind::Agent { sandbox: Some(sb), .. } => return Some(sb.clone()),
                 TabKind::Shell { sandbox, .. } => return Some(sandbox.clone()),
+                TabKind::HostShell { .. } => return None,
                 _ => {}
             }
         }
