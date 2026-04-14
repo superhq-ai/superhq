@@ -8,7 +8,7 @@ pub fn config() -> AgentConfig {
         display_name: "Pi",
         command: "/usr/local/bin/pi",
         icon: Some("icons/agents/pi.svg"),
-        color: Some("#FFFFFF"),
+        color: None,
         tab_order: 3,
         install_steps: vec![
             InstallStep::Group {

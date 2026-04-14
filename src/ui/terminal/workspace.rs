@@ -59,7 +59,7 @@ impl super::TerminalPanel {
     }
 
     pub fn set_on_open_port_dialog(&mut self, cb: impl Fn(i64, Option<Arc<AsyncSandbox>>, tokio::runtime::Handle, &mut Window, &mut App) + 'static) {
-        self.on_open_port_dialog = Some(Box::new(cb));
+        self.on_open_port_dialog = Some(Arc::new(cb));
     }
 
     // --- Setup progress helpers ---

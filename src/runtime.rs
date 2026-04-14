@@ -1,11 +1,14 @@
 //! Shuru runtime image download & verification.
 //!
-//! Mirrors the logic from `shuru-cli/src/assets.rs`: downloads a single
-//! tar.gz from GitHub Releases containing kernel, rootfs, and initramfs,
-//! then streams it to disk.
+//! Downloads a tar.gz from GitHub Releases to a temp file, then extracts
+//! it to the data directory. Download and extraction are separate phases
+//! so the UI can reflect them independently.
 
 use anyhow::{bail, Context, Result};
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// The shuru release version we need. Must match a published GitHub release.
 const SHURU_VERSION: &str = "0.5.8";
@@ -65,45 +68,20 @@ fn do_download(
     let url = format!(
         "https://github.com/superhq-ai/shuru/releases/download/{tag}/shuru-os-{tag}-aarch64.tar.gz"
     );
+    let archive_path = dir.join(format!("shuru-os-{tag}.tar.gz.partial"));
 
-    // Blocking HTTP GET with streaming
-    let response = reqwest::blocking::Client::new()
-        .get(&url)
-        .send()
-        .with_context(|| format!("download failed — is version {tag} released?"))?;
+    download_to_file(&url, &archive_path, on_progress)
+        .with_context(|| format!("failed to download shuru runtime (version {tag})"))?;
 
-    if !response.status().is_success() {
-        bail!(
-            "download failed: HTTP {} for {url}",
-            response.status()
-        );
-    }
+    on_extracting();
 
-    let total = response.content_length();
+    let result = extract_archive(&archive_path, &dir);
+    let _ = std::fs::remove_file(&archive_path);
+    result.context("failed to extract shuru runtime archive")?;
 
-    // Stream through progress tracker → gzip → tar → disk
-    // Note: download and extraction are interleaved (streaming through gzip),
-    // so we fire on_extracting when the last byte is read, not upfront.
-    let reader = ProgressReader {
-        inner: response,
-        downloaded: 0,
-        on_progress,
-        on_extracting: Some(on_extracting),
-        total,
-    };
-
-
-    let decoder = flate2::read::GzDecoder::new(reader);
-    let mut archive = tar::Archive::new(decoder);
-    archive
-        .unpack(&dir)
-        .context("failed to extract shuru runtime archive")?;
-
-    // Write VERSION marker
     std::fs::write(dir.join("VERSION"), SHURU_VERSION)
         .context("failed to write VERSION file")?;
 
-    // Verify all files present
     for name in REQUIRED_FILES {
         if !dir.join(name).exists() {
             bail!("extraction succeeded but {name} is missing from archive");
@@ -113,26 +91,77 @@ fn do_download(
     Ok(())
 }
 
-/// Wraps a reader and reports download progress.
-/// Fires `on_extracting` once when the download completes (reader returns 0 bytes).
-struct ProgressReader<'a, R> {
-    inner: R,
-    downloaded: u64,
-    on_progress: &'a dyn Fn(u64, Option<u64>),
-    on_extracting: Option<&'a dyn Fn()>,
-    total: Option<u64>,
+/// Download `url` to `dest`, reporting progress.
+fn download_to_file(
+    url: &str,
+    dest: &Path,
+    on_progress: &dyn Fn(u64, Option<u64>),
+) -> Result<()> {
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(600))
+        .build()
+        .context("failed to build HTTP client")?;
+
+    let response = client
+        .get(url)
+        .send()
+        .with_context(|| format!("request failed: {url}"))?;
+
+    if !response.status().is_success() {
+        bail!("download failed: HTTP {} for {url}", response.status());
+    }
+
+    let total = response.content_length();
+    let tmp = File::create(dest)
+        .with_context(|| format!("failed to create {}", dest.display()))?;
+    let mut writer = BufWriter::with_capacity(1 << 20, tmp);
+    let mut reader = response;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut downloaded: u64 = 0;
+    // Throttle progress notifications so we don't spam the UI thread.
+    let mut last_notified: u64 = 0;
+
+    loop {
+        let n = reader.read(&mut buf).context("read from HTTP response")?;
+        if n == 0 {
+            break;
+        }
+        writer
+            .write_all(&buf[..n])
+            .with_context(|| format!("write to {}", dest.display()))?;
+        downloaded += n as u64;
+        if downloaded - last_notified >= 256 * 1024 {
+            on_progress(downloaded, total);
+            last_notified = downloaded;
+        }
+    }
+    writer.flush().context("flush download buffer")?;
+    on_progress(downloaded, total);
+
+    if let Some(t) = total {
+        if downloaded < t {
+            bail!("download truncated: got {downloaded} of {t} bytes");
+        }
+    }
+    Ok(())
 }
 
-impl<R: std::io::Read> std::io::Read for ProgressReader<'_, R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let n = self.inner.read(buf)?;
-        self.downloaded += n as u64;
-        (self.on_progress)(self.downloaded, self.total);
-        if n == 0 {
-            if let Some(cb) = self.on_extracting.take() {
-                cb();
-            }
+/// Extract a tar.gz from `archive_path` into `dest`. Removes any pre-existing
+/// REQUIRED_FILES first so we don't fight overwrite-in-place behavior.
+fn extract_archive(archive_path: &Path, dest: &Path) -> Result<()> {
+    for name in REQUIRED_FILES {
+        let p = dest.join(name);
+        if p.exists() {
+            let _ = std::fs::remove_file(&p);
         }
-        Ok(n)
     }
+
+    let file = File::open(archive_path)
+        .with_context(|| format!("open {}", archive_path.display()))?;
+    let reader = BufReader::with_capacity(1 << 20, file);
+    let decoder = flate2::read::GzDecoder::new(reader);
+    let mut archive = tar::Archive::new(decoder);
+    archive.unpack(dest)?;
+    Ok(())
 }

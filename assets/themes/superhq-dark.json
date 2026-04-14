@@ -41,5 +41,7 @@
   "diff_del_bg":      "#e06c7518",
   "diff_add_text":    "#98c379cc",
   "diff_del_text":    "#e06c75cc",
-  "diff_hunk_header": "#61afef33"
+  "diff_hunk_header": "#61afef33",
+
+  "scrollbar_thumb":  "#ffffff80"
 }

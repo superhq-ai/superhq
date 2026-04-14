@@ -1,7 +1,16 @@
 use gpui::*;
+use std::sync::{Arc, LazyLock};
 
 use super::theme as t;
 use crate::runtime;
+
+/// App icon embedded at compile time.
+static APP_ICON: LazyLock<Arc<Image>> = LazyLock::new(|| {
+    Arc::new(Image::from_bytes(
+        ImageFormat::Png,
+        include_bytes!("../../assets/app-icon-128.png").to_vec(),
+    ))
+});
 
 /// First-run setup phase.
 #[derive(Debug, Clone, PartialEq)]
@@ -168,12 +177,9 @@ impl SetupScreen {
     }
 
     fn render_icon(&self, size: f32) -> impl IntoElement {
-        img(std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/app-icon-128.png"
-        )))
-        .w(px(size))
-        .h(px(size))
+        img(APP_ICON.clone())
+            .w(px(size))
+            .h(px(size))
     }
 
     fn render_welcome(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -24,6 +24,13 @@ actions!(terminal_panel, [
 
 impl Render for TerminalPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Push fresh colors into every open terminal if the theme changed.
+        let theme_gen = crate::ui::theme::theme_generation();
+        if theme_gen != self.last_theme_gen {
+            self.last_theme_gen = theme_gen;
+            self.refresh_terminal_configs(cx);
+        }
+
         let active: Option<&Entity<session::WorkspaceSession>> = self
             .active_workspace_id
             .and_then(|id| self.sessions.get(&id));
@@ -651,7 +658,8 @@ impl Render for TerminalPanel {
                     content = content.child(
                         div()
                             .flex_grow()
-                            .size_full()
+                            .w_full()
+                            .min_h_0()
                             .children(active_tab_terminal),
                     );
                 } else {
@@ -724,12 +732,18 @@ impl Render for TerminalPanel {
                                     item.cursor_pointer()
                                         .hover(|s| s.bg(t::bg_hover()).text_color(t::text_muted()))
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            if let Some(ref cb) = this.on_open_port_dialog {
-                                                let (sb, th) = this.get_active_sandbox(ws_id, cx)
-                                                    .map(|(sb, th)| (Some(sb), th))
-                                                    .unwrap_or_else(|| (None, this.tokio_handle.clone()));
+                                            let Some(cb) = this.on_open_port_dialog.clone() else {
+                                                return;
+                                            };
+                                            let (sb, th) = this.get_active_sandbox(ws_id, cx)
+                                                .map(|(sb, th)| (Some(sb), th))
+                                                .unwrap_or_else(|| (None, this.tokio_handle.clone()));
+                                            // Defer so we're outside TerminalPanel's update
+                                            // before the callback runs (it re-enters via
+                                            // clear_badges -> terminal.update).
+                                            window.defer(cx, move |window, cx| {
                                                 cb(ws_id, sb, th, window, cx);
-                                            }
+                                            });
                                         }))
                                 }
                             }),

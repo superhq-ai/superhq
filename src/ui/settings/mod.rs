@@ -1,4 +1,5 @@
 mod about;
+mod appearance;
 pub mod card;
 mod general;
 mod providers;
@@ -35,6 +36,7 @@ fn supports_oauth(env_var: &str) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
     General,
+    Appearance,
     Secrets,
     Sandbox,
     Shortcuts,
@@ -45,6 +47,7 @@ impl SettingsTab {
     fn label(&self) -> &'static str {
         match self {
             Self::General => "General",
+            Self::Appearance => "Appearance",
             Self::Secrets => "Providers",
             Self::Sandbox => "Sandbox",
             Self::Shortcuts => "Shortcuts",
@@ -55,6 +58,7 @@ impl SettingsTab {
     fn all() -> &'static [SettingsTab] {
         &[
             SettingsTab::General,
+            SettingsTab::Appearance,
             SettingsTab::Secrets,
             SettingsTab::Sandbox,
             SettingsTab::Shortcuts,
@@ -99,6 +103,7 @@ pub struct SettingsPanel {
     pub(crate) active_tab: SettingsTab,
     pub(crate) default_agent_id: Option<i64>,
     pub(crate) auto_launch_agent: bool,
+    pub(crate) theme_id: String,
     agent_dropdown: Entity<crate::ui::components::Select>,
     pub(crate) secret_rows: Vec<SecretRow>,
     pub(crate) sandbox_inputs: SandboxInputs,
@@ -197,11 +202,19 @@ impl SettingsPanel {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window);
 
+        let theme_id = settings
+            .as_ref()
+            .map(|s| s.theme.clone())
+            .filter(|id| id == crate::ui::theme::AUTO_THEME
+                || crate::ui::theme::theme_entry(id).is_some())
+            .unwrap_or_else(|| "superhq-dark".to_string());
+
         Self {
             db,
             active_tab: SettingsTab::General,
             default_agent_id,
             auto_launch_agent: settings.as_ref().map(|s| s.auto_launch_agent).unwrap_or(true),
+            theme_id,
             agent_dropdown,
             secret_rows,
             sandbox_inputs,
@@ -365,6 +378,9 @@ impl Render for SettingsPanel {
                                             .child(match self.active_tab {
                                                 SettingsTab::General => {
                                                     self.render_general_tab(cx).into_any_element()
+                                                }
+                                                SettingsTab::Appearance => {
+                                                    self.render_appearance_tab(cx).into_any_element()
                                                 }
                                                 SettingsTab::Secrets => {
                                                     self.render_secrets_tab(cx).into_any_element()

@@ -1,6 +1,7 @@
-use gpui::{div, px, Div, ParentElement as _, Rgba, Styled as _};
+use gpui::{div, px, Div, ParentElement as _, Rgba, Styled as _, WindowAppearance};
 use serde::Deserialize;
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 // ── Color type with hex deserialization ─────────────────────────
 
@@ -94,59 +95,184 @@ pub struct ThemeColors {
     pub diff_add_text: Color,
     pub diff_del_text: Color,
     pub diff_hunk_header: Color,
+
+    pub scrollbar_thumb: Color,
 }
 
-static THEME: LazyLock<ThemeColors> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../assets/themes/superhq-dark.json"))
-        .expect("Failed to parse default theme (superhq-dark.json)")
-});
+// ── Bundled theme catalog ──────────────────────────────────────
+//
+// Themes are compiled into the binary. Adding one means adding a JSON
+// in assets/themes/ and an entry to `THEME_SOURCES`.
+
+/// A user-selectable entry in the Appearance picker.
+#[derive(Clone, Copy, Debug)]
+pub struct ThemeEntry {
+    /// ID persisted to the DB (`settings.theme`).
+    pub id: &'static str,
+    /// Label shown in the picker.
+    pub label: &'static str,
+}
+
+const THEME_SOURCES: &[(&str, &str)] = &[
+    ("superhq-dark",  include_str!("../../assets/themes/superhq-dark.json")),
+    ("superhq-light", include_str!("../../assets/themes/superhq-light.json")),
+    ("washi",         include_str!("../../assets/themes/washi.json")),
+    ("sumi",          include_str!("../../assets/themes/sumi.json")),
+];
+
+pub const THEMES: &[ThemeEntry] = &[
+    ThemeEntry { id: "superhq-light", label: "Light" },
+    ThemeEntry { id: "superhq-dark",  label: "Dark"  },
+    ThemeEntry { id: "washi",         label: "Washi" },
+    ThemeEntry { id: "sumi",          label: "Sumi"  },
+];
+
+/// Reserved ID for "follow the system light/dark setting".
+pub const AUTO_THEME: &str = "auto";
+
+fn parse_theme(id: &str) -> Option<ThemeColors> {
+    let src = THEME_SOURCES.iter().find(|(k, _)| *k == id)?.1;
+    match serde_json::from_str(src) {
+        Ok(t) => Some(t),
+        Err(e) => {
+            eprintln!("Failed to parse theme {id}: {e}");
+            None
+        }
+    }
+}
+
+static THEME: RwLock<Option<Arc<ThemeColors>>> = RwLock::new(None);
+static THEME_GEN: AtomicU64 = AtomicU64::new(1);
+
+/// A monotonic counter that increments every time `load_theme` succeeds.
+/// UI widgets that cache derived state (like the terminal's color palette)
+/// can compare this against their last-seen value to detect theme changes.
+pub fn theme_generation() -> u64 {
+    THEME_GEN.load(Ordering::Relaxed)
+}
+
+/// Whether the active theme's base background is closer to black than white.
+/// Derived from luminance so new themes work without any flag bookkeeping.
+pub fn is_dark() -> bool {
+    let bg = current().bg_base.0;
+    let luma = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b;
+    luma < 0.5
+}
+
+fn current() -> Arc<ThemeColors> {
+    if let Some(t) = THEME.read().unwrap().clone() {
+        return t;
+    }
+    let theme = Arc::new(
+        parse_theme("superhq-dark").expect("default theme superhq-dark failed to parse"),
+    );
+    *THEME.write().unwrap() = Some(theme.clone());
+    theme
+}
+
+/// Load a theme by id. Caller is responsible for triggering a redraw
+/// (e.g. `cx.refresh_windows()`) once the swap is complete.
+///
+/// Returns `false` if the id is unknown.
+pub fn load_theme(id: &str) -> bool {
+    let Some(colors) = parse_theme(id) else { return false };
+    *THEME.write().unwrap() = Some(Arc::new(colors));
+    THEME_GEN.fetch_add(1, Ordering::Relaxed);
+    true
+}
+
+/// Resolve a *saved* theme id — which may be "auto" — to a concrete theme id
+/// using the given system appearance.
+pub fn resolve_theme_id(saved: &str, appearance: WindowAppearance) -> &str {
+    if saved == AUTO_THEME {
+        match appearance {
+            WindowAppearance::Dark | WindowAppearance::VibrantDark => "superhq-dark",
+            WindowAppearance::Light | WindowAppearance::VibrantLight => "superhq-light",
+        }
+    } else if THEME_SOURCES.iter().any(|(k, _)| *k == saved) {
+        saved
+    } else {
+        "superhq-dark"
+    }
+}
+
+/// Look up a theme entry by its id.
+pub fn theme_entry(id: &str) -> Option<&'static ThemeEntry> {
+    THEMES.iter().find(|t| t.id == id)
+}
+
+/// A minimal palette for rendering theme preview cards. Cheap to copy.
+#[derive(Clone, Copy)]
+pub struct PreviewPalette {
+    pub bg: Rgba,
+    pub surface: Rgba,
+    pub border: Rgba,
+    pub text: Rgba,
+    pub muted: Rgba,
+    pub accent: Rgba,
+}
+
+/// Build a preview palette for a concrete theme id (not "auto").
+pub fn preview_palette(id: &str) -> Option<PreviewPalette> {
+    let t = parse_theme(id)?;
+    Some(PreviewPalette {
+        bg: t.bg_base.0,
+        surface: t.bg_elevated.0,
+        border: t.border.0,
+        text: t.text_primary.0,
+        muted: t.text_muted.0,
+        accent: t.accent.0,
+    })
+}
 
 // ── Public accessors (same API as before) ──────────────────────
 
-pub fn bg_base() -> Rgba { THEME.bg_base.0 }
-pub fn bg_terminal() -> Rgba { THEME.bg_terminal.0 }
-pub fn terminal_foreground() -> Rgba { THEME.terminal_foreground.0 }
-pub fn terminal_cursor() -> Rgba { THEME.terminal_cursor.0 }
-pub fn bg_surface() -> Rgba { THEME.bg_surface.0 }
-pub fn bg_elevated() -> Rgba { THEME.bg_elevated.0 }
-pub fn bg_hover() -> Rgba { THEME.bg_hover.0 }
-pub fn bg_active() -> Rgba { THEME.bg_active.0 }
-pub fn bg_selected() -> Rgba { THEME.bg_selected.0 }
-pub fn bg_input() -> Rgba { THEME.bg_input.0 }
+pub fn bg_base() -> Rgba { current().bg_base.0 }
+pub fn bg_terminal() -> Rgba { current().bg_terminal.0 }
+pub fn terminal_foreground() -> Rgba { current().terminal_foreground.0 }
+pub fn terminal_cursor() -> Rgba { current().terminal_cursor.0 }
+pub fn bg_surface() -> Rgba { current().bg_surface.0 }
+pub fn bg_elevated() -> Rgba { current().bg_elevated.0 }
+pub fn bg_hover() -> Rgba { current().bg_hover.0 }
+pub fn bg_active() -> Rgba { current().bg_active.0 }
+pub fn bg_selected() -> Rgba { current().bg_selected.0 }
+pub fn bg_input() -> Rgba { current().bg_input.0 }
 
-pub fn border() -> Rgba { THEME.border.0 }
-pub fn border_subtle() -> Rgba { THEME.border_subtle.0 }
-pub fn border_strong() -> Rgba { THEME.border_strong.0 }
-pub fn border_focus() -> Rgba { THEME.border_focus.0 }
-pub fn transparent() -> Rgba { THEME.transparent.0 }
-pub fn accent() -> Rgba { THEME.accent.0 }
-pub fn selection_bg() -> Rgba { THEME.selection_bg.0 }
+pub fn border() -> Rgba { current().border.0 }
+pub fn border_subtle() -> Rgba { current().border_subtle.0 }
+pub fn border_strong() -> Rgba { current().border_strong.0 }
+pub fn border_focus() -> Rgba { current().border_focus.0 }
+pub fn transparent() -> Rgba { current().transparent.0 }
+pub fn accent() -> Rgba { current().accent.0 }
+pub fn selection_bg() -> Rgba { current().selection_bg.0 }
 
-pub fn text_primary() -> Rgba { THEME.text_primary.0 }
-pub fn text_secondary() -> Rgba { THEME.text_secondary.0 }
-pub fn text_tertiary() -> Rgba { THEME.text_tertiary.0 }
-pub fn text_muted() -> Rgba { THEME.text_muted.0 }
-pub fn text_dim() -> Rgba { THEME.text_dim.0 }
-pub fn text_ghost() -> Rgba { THEME.text_ghost.0 }
-pub fn text_faint() -> Rgba { THEME.text_faint.0 }
-pub fn text_invisible() -> Rgba { THEME.text_invisible.0 }
+pub fn text_primary() -> Rgba { current().text_primary.0 }
+pub fn text_secondary() -> Rgba { current().text_secondary.0 }
+pub fn text_tertiary() -> Rgba { current().text_tertiary.0 }
+pub fn text_muted() -> Rgba { current().text_muted.0 }
+pub fn text_dim() -> Rgba { current().text_dim.0 }
+pub fn text_ghost() -> Rgba { current().text_ghost.0 }
+pub fn text_faint() -> Rgba { current().text_faint.0 }
+pub fn text_invisible() -> Rgba { current().text_invisible.0 }
 
-pub fn status_green_dim() -> Rgba { THEME.status_green_dim.0 }
-pub fn status_dim() -> Rgba { THEME.status_dim.0 }
+pub fn status_green_dim() -> Rgba { current().status_green_dim.0 }
+pub fn status_dim() -> Rgba { current().status_dim.0 }
 
-pub fn agent_running() -> Rgba { THEME.agent_running.0 }
-pub fn agent_needs_input() -> Rgba { THEME.agent_needs_input.0 }
+pub fn agent_running() -> Rgba { current().agent_running.0 }
+pub fn agent_needs_input() -> Rgba { current().agent_needs_input.0 }
 
-pub fn error_text() -> Rgba { THEME.error_text.0 }
-pub fn error_bg() -> Rgba { THEME.error_bg.0 }
-pub fn error_border() -> Rgba { THEME.error_border.0 }
+pub fn error_text() -> Rgba { current().error_text.0 }
+pub fn error_bg() -> Rgba { current().error_bg.0 }
+pub fn error_border() -> Rgba { current().error_border.0 }
 
 
-pub fn diff_add_bg() -> Rgba { THEME.diff_add_bg.0 }
-pub fn diff_del_bg() -> Rgba { THEME.diff_del_bg.0 }
-pub fn diff_add_text() -> Rgba { THEME.diff_add_text.0 }
-pub fn diff_del_text() -> Rgba { THEME.diff_del_text.0 }
-pub fn diff_hunk_header() -> Rgba { THEME.diff_hunk_header.0 }
+pub fn diff_add_bg() -> Rgba { current().diff_add_bg.0 }
+pub fn diff_del_bg() -> Rgba { current().diff_del_bg.0 }
+pub fn diff_add_text() -> Rgba { current().diff_add_text.0 }
+pub fn diff_del_text() -> Rgba { current().diff_del_text.0 }
+pub fn diff_hunk_header() -> Rgba { current().diff_hunk_header.0 }
+
+pub fn scrollbar_thumb() -> Rgba { current().scrollbar_thumb.0 }
 
 // ── Shared styles ──────────────────────────────────────────────
 

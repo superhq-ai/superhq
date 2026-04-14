@@ -1,4 +1,5 @@
 use gpui::*;
+use gpui_terminal::TerminalView;
 use shuru_sdk::AsyncSandbox;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,9 +34,10 @@ pub struct TerminalPanel {
     pub(super) missing_secrets_prompt: Option<MissingSecretsPrompt>,
     pub(super) skip_secret_check: bool,
     pub(super) on_open_settings: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
-    pub(super) on_open_port_dialog: Option<Box<dyn Fn(i64, Option<Arc<AsyncSandbox>>, tokio::runtime::Handle, &mut Window, &mut App) + 'static>>,
+    pub(super) on_open_port_dialog: Option<Arc<dyn Fn(i64, Option<Arc<AsyncSandbox>>, tokio::runtime::Handle, &mut Window, &mut App) + 'static>>,
     pub(super) side_panel: Option<Entity<SidePanel>>,
     pub show_tab_badges: bool,
+    pub(super) last_theme_gen: u64,
 }
 
 impl TerminalPanel {
@@ -71,6 +73,26 @@ impl TerminalPanel {
             on_open_port_dialog: None,
             side_panel: None,
             show_tab_badges: false,
+            last_theme_gen: crate::ui::theme::theme_generation(),
+        }
+    }
+
+    /// Push the current theme's colors into every open terminal. Called from
+    /// `render` when the global theme generation counter advances.
+    pub(super) fn refresh_terminal_configs(&self, cx: &mut App) {
+        let config = Self::make_terminal_config();
+        for session in self.sessions.values() {
+            let tabs: Vec<Entity<TerminalView>> = session
+                .read(cx)
+                .tabs
+                .iter()
+                .filter_map(|t| t.terminal.clone())
+                .collect();
+            for terminal in tabs {
+                terminal.update(cx, |t, cx| {
+                    t.update_config(config.clone(), cx);
+                });
+            }
         }
     }
 

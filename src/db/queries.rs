@@ -391,6 +391,15 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_theme(&self, theme: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE settings SET theme = ?1 WHERE id = 1",
+            rusqlite::params![theme],
+        )?;
+        Ok(())
+    }
+
     /// Get the workspace name that a given workspace was cloned from.
     pub fn get_cloned_from_name(&self, cloned_from_id: i64) -> Result<Option<String>> {
         let conn = self.conn.lock().unwrap();

@@ -19,7 +19,7 @@ pub fn build_config(
     let mut config = SandboxConfig::default();
     config.allow_net = true;
     config.env.insert("HOME".into(), "/root".into());
-    config.storage = shuru_sdk::StorageMode::Cas { cas_dir: None };
+    config.storage = shuru_sdk::StorageMode::Direct;
     config.cpus = sb_settings.as_ref().map(|s| s.sandbox_cpus as usize).unwrap_or(2);
     config.memory_mb = sb_settings.as_ref().map(|s| s.sandbox_memory_mb as u64).unwrap_or(8192);
     config.disk_size_mb = sb_settings.as_ref().map(|s| s.sandbox_disk_mb as u64).unwrap_or(16384);
@@ -130,6 +130,12 @@ pub fn build_agent_env(gateway_env: &HashMap<String, String>) -> HashMap<String,
     env.insert(
         "SSL_CERT_FILE".into(),
         "/etc/ssl/certs/ca-certificates.crt".into(),
+    );
+    // Hint the TUI about the terminal's light/dark background so it can pick
+    // a matching palette. Well-behaved TUIs read COLORFGBG; others ignore it.
+    env.insert(
+        "COLORFGBG".into(),
+        if crate::ui::theme::is_dark() { "15;0".into() } else { "0;15".into() },
     );
     env
 }

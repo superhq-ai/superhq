@@ -669,12 +669,16 @@ impl Element for DiffBlock {
             let is_visible = s.dragging || s.hovered || scrollbar_is_visible(&self.scroll);
 
             if is_visible {
+                let thumb = |factor: f32| -> gpui::Hsla {
+                    let base: gpui::Hsla = crate::ui::theme::scrollbar_thumb().into();
+                    gpui::Hsla { a: base.a * factor, ..base }
+                };
                 let (thumb_color, radius) = if s.dragging || s.hovered_thumb {
-                    (gpui::hsla(0.0, 0.0, 1.0, 0.5), px(THUMB_ACTIVE_RADIUS))
+                    (thumb(1.0), px(THUMB_ACTIVE_RADIUS))
                 } else if s.hovered {
-                    (gpui::hsla(0.0, 0.0, 1.0, 0.4), px(THUMB_ACTIVE_RADIUS))
+                    (thumb(0.8), px(THUMB_ACTIVE_RADIUS))
                 } else {
-                    (gpui::hsla(0.0, 0.0, 1.0, scrollbar_opacity(&self.scroll) * 0.35), px(THUMB_RADIUS))
+                    (thumb(0.7 * scrollbar_opacity(&self.scroll)), px(THUMB_RADIUS))
                 };
 
                 window.paint_quad(

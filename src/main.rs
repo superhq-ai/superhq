@@ -600,6 +600,15 @@ fn main() -> Result<()> {
     let app = Application::new().with_assets(assets::Assets);
 
     app.run(move |cx| {
+        // Load saved theme before any UI renders.
+        let saved_theme = db
+            .get_settings()
+            .ok()
+            .map(|s| s.theme)
+            .unwrap_or_else(|| "superhq-dark".into());
+        let resolved = ui::theme::resolve_theme_id(&saved_theme, cx.window_appearance());
+        ui::theme::load_theme(resolved);
+
         ui::components::actions::bind_keys(cx);
         ui::components::text_input::bind_keys(cx);
 
@@ -658,10 +667,30 @@ fn main() -> Result<()> {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| AppView::new(db, cx));
+                let view = cx.new(|cx| AppView::new(db.clone(), cx));
 
                 // Ensure the app root has focus so keystrokes work before a terminal is opened
                 view.read(cx).focus_handle.focus(window);
+
+                // Follow system light/dark when theme is set to "auto".
+                let db_for_appearance = db.clone();
+                window
+                    .observe_window_appearance(move |window, cx| {
+                        let saved = db_for_appearance
+                            .get_settings()
+                            .ok()
+                            .map(|s| s.theme)
+                            .unwrap_or_default();
+                        if saved != ui::theme::AUTO_THEME {
+                            return;
+                        }
+                        let resolved =
+                            ui::theme::resolve_theme_id(&saved, window.appearance());
+                        if ui::theme::load_theme(resolved) {
+                            cx.refresh_windows();
+                        }
+                    })
+                    .detach();
 
                 // Global keystroke interceptor — fires before all element handlers
                 let sidebar = view.read(cx).sidebar.clone();

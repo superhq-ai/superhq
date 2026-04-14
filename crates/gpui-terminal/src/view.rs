@@ -189,6 +189,10 @@ pub struct TerminalConfig {
     /// Color palette for terminal colors (16 ANSI colors, 256 extended colors,
     /// foreground, background, and cursor colors)
     pub colors: ColorPalette,
+
+    /// Scrollbar thumb color at its "peak" alpha (dragging/hovered state).
+    /// Hover and resting states derive from this by scaling alpha.
+    pub scrollbar_thumb: Hsla,
 }
 
 impl Default for TerminalConfig {
@@ -202,6 +206,7 @@ impl Default for TerminalConfig {
             line_height_multiplier: 1.0,
             padding: Edges::all(px(0.0)),
             colors: ColorPalette::default(),
+            scrollbar_thumb: gpui::hsla(0.0, 0.0, 1.0, 0.5),
         }
     }
 }
@@ -1253,6 +1258,7 @@ impl Render for TerminalView {
         let renderer = self.renderer.clone();
         let resize_callback = self.resize_callback.clone();
         let padding = self.config.padding;
+        let scrollbar_thumb = self.config.scrollbar_thumb;
 
         // Capture data for the paint closure
         let selection_range = self.state.content.selection_range.clone();
@@ -1439,12 +1445,14 @@ impl Render for TerminalView {
                                 // Paint thumb with state-dependent styling
                                 let is_visible = sb.dragging || sb.hovered || sb_is_visible(&scrollbar);
                                 if is_visible {
+                                    let base = scrollbar_thumb;
+                                    let thumb = |factor: f32| gpui::Hsla { a: base.a * factor, ..base };
                                     let (thumb_color, radius) = if sb.dragging || sb.hovered_thumb {
-                                        (gpui::hsla(0.0, 0.0, 1.0, 0.5), px(SB_THUMB_ACTIVE_RADIUS))
+                                        (thumb(1.0), px(SB_THUMB_ACTIVE_RADIUS))
                                     } else if sb.hovered {
-                                        (gpui::hsla(0.0, 0.0, 1.0, 0.4), px(SB_THUMB_ACTIVE_RADIUS))
+                                        (thumb(0.8), px(SB_THUMB_ACTIVE_RADIUS))
                                     } else {
-                                        (gpui::hsla(0.0, 0.0, 1.0, sb_opacity(&scrollbar) * 0.35), px(SB_THUMB_RADIUS))
+                                        (thumb(0.7 * sb_opacity(&scrollbar)), px(SB_THUMB_RADIUS))
                                     };
 
                                     window.paint_quad(

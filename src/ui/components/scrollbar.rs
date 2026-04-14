@@ -3,6 +3,19 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Instant;
 
+use crate::ui::theme as t;
+
+/// Alpha multipliers applied to `theme::scrollbar_thumb()` for each state.
+/// The theme ships the "peak" alpha; we fade from there.
+const THUMB_ALPHA_ACTIVE: f32 = 1.0; // dragging / hovering the thumb
+const THUMB_ALPHA_HOVER: f32 = 0.8;  // hovering the track
+const THUMB_ALPHA_REST: f32 = 0.7;   // resting (further multiplied by fade opacity)
+
+fn thumb_color(factor: f32) -> Hsla {
+    let base: Hsla = t::scrollbar_thumb().into();
+    Hsla { a: base.a * factor, ..base }
+}
+
 // ── Constants ──────────────────────────────────────────────────
 
 pub const TRACK_SIZE: f32 = 14.0;
@@ -154,12 +167,12 @@ pub fn paint_scrollbar(
     );
 
     let (color, radius) = if sb.dragging || sb.hovered_thumb {
-        (hsla(0.0, 0.0, 1.0, 0.5), px(THUMB_ACTIVE_RADIUS))
+        (thumb_color(THUMB_ALPHA_ACTIVE), px(THUMB_ACTIVE_RADIUS))
     } else if sb.hovered {
-        (hsla(0.0, 0.0, 1.0, 0.4), px(THUMB_ACTIVE_RADIUS))
+        (thumb_color(THUMB_ALPHA_HOVER), px(THUMB_ACTIVE_RADIUS))
     } else {
         (
-            hsla(0.0, 0.0, 1.0, state.opacity() * 0.35),
+            thumb_color(THUMB_ALPHA_REST * state.opacity()),
             px(THUMB_RADIUS),
         )
     };

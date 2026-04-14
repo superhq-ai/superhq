@@ -335,6 +335,7 @@ impl super::TerminalPanel {
                     .cursor(cr, cg, cb)
                     .build()
             },
+            scrollbar_thumb: t::scrollbar_thumb().into(),
         }
     }
 }

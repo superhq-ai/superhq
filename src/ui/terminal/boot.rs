@@ -61,7 +61,7 @@ impl super::TerminalPanel {
                 let mut install_config = SandboxConfig::default();
                 install_config.allow_net = true;
                 install_config.env.insert("HOME".into(), "/root".into());
-                install_config.storage = shuru_sdk::StorageMode::Cas { cas_dir: None };
+                install_config.storage = shuru_sdk::StorageMode::Direct;
                 install_config.memory_mb = sb_settings_install.as_ref().map(|s| s.sandbox_memory_mb as u64).unwrap_or(8192);
                 install_config.disk_size_mb = sb_settings_install.as_ref().map(|s| s.sandbox_disk_mb as u64).unwrap_or(16384);
 
@@ -643,6 +643,10 @@ impl super::TerminalPanel {
                 let mut env = HashMap::new();
                 env.insert("TERM".to_string(), "xterm-256color".to_string());
                 env.insert("COLORTERM".to_string(), "truecolor".to_string());
+                env.insert(
+                    "COLORFGBG".to_string(),
+                    if crate::ui::theme::is_dark() { "15;0".into() } else { "0;15".into() },
+                );
                 env.insert("PROMPT_COMMAND".to_string(),
                     r#"printf "\033]0;%s@%s:%s\007" "${USER}" "${HOSTNAME%%.*}" "${PWD/#$HOME/~}""#.to_string());
                 tokio_handle
@@ -759,6 +763,10 @@ impl super::TerminalPanel {
         let mut cmd = portable_pty::CommandBuilder::new(&shell);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env(
+            "COLORFGBG",
+            if crate::ui::theme::is_dark() { "15;0" } else { "0;15" },
+        );
 
         // Start in the workspace's mount path if available
         let mount_path = self.sessions.get(&ws_id)
