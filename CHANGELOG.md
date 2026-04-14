@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+
+- Codex installer works again. Matches shuru 0.5.9 which drops the guest's silent-first-component stripping in favor of an explicit `strip_components` per download. Flat tarballs (Codex) and directory-wrapped ones (Node, Pi) now extract correctly.
+- Bumped shuru runtime to 0.5.9.
+
 ## 0.3.3
 
 - Appearance settings: theme picker with Light, Dark, Washi, Sumi, and Auto (follows system). Hot-swap — chrome, terminals, and scrollbars update in place without restart.
