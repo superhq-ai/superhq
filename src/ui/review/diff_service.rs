@@ -1,5 +1,5 @@
 use super::changes_tab::FileStatus;
-use super::diff_engine::{self, FileDiff};
+use super::diff_engine::{self, DiffStats, FileDiff};
 use shuru_sdk::AsyncSandbox;
 use std::sync::Arc;
 
@@ -49,6 +49,22 @@ impl DiffService {
         };
         let new = diff_engine::read_sandbox_file(path, "/workspace", &self.sandbox).await;
         diff_engine::compute_file_diff(
+            &old.unwrap_or_default(),
+            &new.unwrap_or_default(),
+        )
+    }
+
+    /// Compute just the additions/deletions for a file without building the
+    /// hunk/line structures. Cheap enough to run eagerly for every changed
+    /// file so the header totals stay accurate; expand still triggers the
+    /// full `compute_diff` lazily.
+    pub async fn compute_stats(&self, path: &str) -> (DiffStats, bool) {
+        let old = match self.host_mount_path.as_deref() {
+            Some(host) => diff_engine::read_host_file(path, host).await,
+            None => None,
+        };
+        let new = diff_engine::read_sandbox_file(path, "/workspace", &self.sandbox).await;
+        diff_engine::compute_file_stats(
             &old.unwrap_or_default(),
             &new.unwrap_or_default(),
         )

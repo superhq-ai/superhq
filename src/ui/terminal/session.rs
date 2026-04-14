@@ -33,7 +33,7 @@ impl SetupStep {
 
 // --- Agent status (from lifecycle hooks) ---
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum AgentStatus {
     #[default]
     Unknown,

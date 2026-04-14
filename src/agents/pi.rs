@@ -18,13 +18,8 @@ pub fn config() -> AgentConfig {
                     InstallStep::Download {
                         label: "Downloading Pi",
                         url: "https://github.com/badlogic/pi-mono/releases/latest/download/pi-linux-arm64.tar.gz",
-                        path: "/tmp",
+                        path: "/usr/local/bin",
                         extract: true,
-                        skip_if: None,
-                    },
-                    InstallStep::Cmd {
-                        label: "Installing binary",
-                        command: "cp -r /tmp/pi/* /usr/local/bin/ && rm -rf /tmp/pi",
                         skip_if: None,
                     },
                     InstallStep::Chmod {

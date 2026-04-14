@@ -1,4 +1,5 @@
 use super::changes_tab::{ChangedFile, FileStatus};
+use futures_util::future::join_all;
 use shuru_sdk::AsyncSandbox;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -81,9 +82,6 @@ impl WatchBridge {
                         Ok(w) => w,
                         Err(_) => return,
                     };
-                    // Drop our Arc so the watcher doesn't keep the VM alive.
-                    // The watch vsock stream is independent of the Arc.
-                    drop(sandbox);
 
                     let prefix = format!("{}/", workspace_path);
                     let mut cached_files: HashMap<String, ChangedFile> = HashMap::new();
@@ -104,29 +102,39 @@ impl WatchBridge {
                             _ = stop_notify.notified() => break,
                         };
 
-                        let mut raw_paths: Vec<(String, u8)> = vec![(event.path, event.kind)];
+                        // Track the last event kind per path — DELETE wins over
+                        // MODIFY so a `rm` isn't clobbered by a trailing
+                        // attribute event from the same syscall.
+                        let mut raw: HashMap<String, u8> = HashMap::new();
+                        let mut push = |p: String, k: u8| {
+                            let slot = raw.entry(p).or_insert(k);
+                            if k == shuru_proto::watch_kind::DELETE {
+                                *slot = k;
+                            }
+                        };
+                        push(event.path, event.kind);
 
                         // Settle: drain until 50ms with no new events
                         loop {
                             while let Ok(ev) = watch.receiver.try_recv() {
-                                raw_paths.push((ev.path, ev.kind));
+                                push(ev.path, ev.kind);
                             }
                             match tokio::time::timeout(
                                 std::time::Duration::from_millis(50),
                                 watch.receiver.recv(),
                             ).await {
-                                Ok(Some(ev)) => raw_paths.push((ev.path, ev.kind)),
+                                Ok(Some(ev)) => push(ev.path, ev.kind),
                                 Ok(None) => return,
                                 Err(_) => break,
                             }
                         }
 
                         let mut dirty: HashMap<String, u8> = HashMap::new();
-                        for (path, kind) in &raw_paths {
+                        for (path, kind) in raw.drain() {
                             if let Some(rel) = path.strip_prefix(&prefix) {
                                 let full = ignore_root.join(rel);
                                 if !gitignore.matched_path_or_any_parents(&full, false).is_ignore() {
-                                    dirty.insert(rel.to_string(), *kind);
+                                    dirty.insert(rel.to_string(), kind);
                                 }
                             }
                         }
@@ -135,36 +143,52 @@ impl WatchBridge {
                             continue;
                         }
 
+                        // Only check host-side existence here (cheap local
+                        // stat). Sandbox-side existence is implied by the
+                        // event kind, and content comparison is deferred to
+                        // the UI's eager stats computation.
+                        let host_probes = dirty.keys().map(|rel| {
+                            let rel = rel.clone();
+                            let host_mount_path = host_mount_path.clone();
+                            async move {
+                                let exists = match host_mount_path {
+                                    Some(host) => {
+                                        tokio::fs::metadata(format!("{}/{}", host, rel))
+                                            .await
+                                            .is_ok()
+                                    }
+                                    None => false,
+                                };
+                                (rel, exists)
+                            }
+                        });
+                        let host_exists_map: HashMap<String, bool> =
+                            join_all(host_probes).await.into_iter().collect();
+
                         let mut updated_files = HashMap::new();
                         let mut removed_paths = HashSet::new();
 
                         for (rel, kind) in &dirty {
-                            let host_exists = match host_mount_path.as_deref() {
-                                Some(host) => {
-                                    let full = format!("{}/{}", host, rel);
-                                    tokio::fs::metadata(&full).await.is_ok()
-                                }
-                                None => false,
-                            };
+                            let host_exists = host_exists_map.get(rel).copied().unwrap_or(false);
+                            let sandbox_exists = *kind != shuru_proto::watch_kind::DELETE;
 
-                            let status = if *kind == shuru_proto::watch_kind::DELETE {
-                                if host_exists {
-                                    FileStatus::Deleted
-                                } else {
-                                    // File deleted in sandbox, never existed on host — remove
+                            let status = match (sandbox_exists, host_exists) {
+                                (false, true) => FileStatus::Deleted,
+                                (false, false) => {
                                     cached_files.remove(rel);
                                     removed_paths.insert(rel.clone());
                                     continue;
                                 }
-                            } else if host_exists {
-                                FileStatus::Modified
-                            } else {
-                                FileStatus::Added
+                                (true, true) => FileStatus::Modified,
+                                (true, false) => FileStatus::Added,
                             };
 
-                            if cached_files.get(rel).map_or(true, |e| e.status != status) {
-                                let file = ChangedFile { path: rel.clone(), status };
-                                cached_files.insert(rel.clone(), file.clone());
+                            let file = ChangedFile { path: rel.clone(), status };
+                            let prev_status = cached_files.get(rel).map(|e| e.status);
+                            cached_files.insert(rel.clone(), file.clone());
+                            let is_repeat_delete = status == FileStatus::Deleted
+                                && prev_status == Some(status);
+                            if !is_repeat_delete {
                                 updated_files.insert(rel.clone(), file);
                             }
                         }

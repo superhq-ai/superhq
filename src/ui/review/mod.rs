@@ -2,6 +2,7 @@ mod changes_tab;
 pub mod diff_engine;
 mod diff_service;
 mod diff_view;
+mod file_row;
 mod highlighter;
 mod watcher;
 
@@ -204,8 +205,9 @@ impl SidePanel {
                             .update(|cx| {
                                 this.update(cx, |panel, cx| {
                                     // Always update the background changes for this sandbox
-                                    if let Some(tab) = panel.sandbox_changes.get_mut(&key) {
-                                        tab.apply_results(result.clone());
+                                    if let Some(mut tab) = panel.sandbox_changes.remove(&key) {
+                                        tab.apply_results(result.clone(), cx);
+                                        panel.sandbox_changes.insert(key, tab);
                                     }
                                     // If this is the active sandbox, also update the visible tab
                                     if panel.active_sandbox_key == Some(key) {
@@ -233,7 +235,7 @@ impl SidePanel {
     }
 
     fn apply_diff_result(&mut self, result: DiffResult, cx: &mut Context<Self>) {
-        self.changes_tab.apply_results(result);
+        self.changes_tab.apply_results(result, cx);
         cx.notify();
     }
 }

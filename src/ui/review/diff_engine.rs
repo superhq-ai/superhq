@@ -34,6 +34,12 @@ pub struct FileDiff {
     pub is_binary: bool,
 }
 
+impl FileDiff {
+    pub fn is_empty(&self) -> bool {
+        !self.is_binary && self.additions == 0 && self.deletions == 0
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct DiffStats {
     pub additions: usize,
@@ -91,6 +97,30 @@ pub async fn copy_to_host(
 fn is_binary(data: &[u8]) -> bool {
     let check_len = data.len().min(8192);
     data[..check_len].contains(&0)
+}
+
+/// Stats-only variant of `compute_file_diff`. Runs the same line diff but
+/// doesn't materialize `DiffHunk`/`DiffLine` vecs — use when the caller only
+/// needs addition/deletion counts (e.g. header totals for unexpanded rows).
+pub fn compute_file_stats(old: &[u8], new: &[u8]) -> (DiffStats, bool) {
+    if is_binary(old) || is_binary(new) {
+        return (DiffStats::default(), true);
+    }
+
+    let old_text = String::from_utf8_lossy(old);
+    let new_text = String::from_utf8_lossy(new);
+    let diff = TextDiff::from_lines(old_text.as_ref(), new_text.as_ref());
+
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            ChangeTag::Insert => additions += 1,
+            ChangeTag::Delete => deletions += 1,
+            ChangeTag::Equal => {}
+        }
+    }
+    (DiffStats { additions, deletions }, false)
 }
 
 pub fn compute_file_diff(old: &[u8], new: &[u8]) -> FileDiff {

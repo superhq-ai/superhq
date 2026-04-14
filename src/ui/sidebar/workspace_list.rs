@@ -36,19 +36,28 @@ impl WorkspaceListView {
         let workspace_views =
             Self::build_views(&db, &workspaces, &terminal_panel, &review_panel, active_workspace_id, cx);
 
-        // Observe terminal panel — when agent status changes, update sidebar dots
+        // Observe terminal panel — when agent status changes, update sidebar
+        // dots. TerminalPanel notifies on every PTY byte chunk, so guard
+        // against the common case where nothing relevant actually changed
+        // (otherwise every byte of agent output triggers a full sidebar
+        // re-render plus a DB query).
         cx.observe(&terminal_panel, |this: &mut Self, panel, cx| {
-            let workspaces = this.db.list_workspaces().unwrap_or_default();
-            for (i, ws) in workspaces.iter().enumerate() {
-                let (names, status) = panel.read(cx).workspace_agent_status(ws.id, cx);
-                if let Some(view) = this.workspace_views.get(i) {
-                    view.update(cx, |item, _| {
+            let mut dirty = false;
+            for view in &this.workspace_views {
+                let ws_id = view.read(cx).workspace.id;
+                let (names, status) = panel.read(cx).workspace_agent_status(ws_id, cx);
+                view.update(cx, |item, item_cx| {
+                    if item.agent_names != names || item.agent_status != status {
                         item.agent_names = names;
                         item.agent_status = status;
-                    });
-                }
+                        item_cx.notify();
+                        dirty = true;
+                    }
+                });
             }
-            cx.notify();
+            if dirty {
+                cx.notify();
+            }
         }).detach();
 
         Self {

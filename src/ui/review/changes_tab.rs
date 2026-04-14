@@ -1,51 +1,17 @@
-use super::diff_engine::{DiffStats, FileDiff};
 use super::diff_service::DiffService;
-use super::diff_view::{self, DiffDisplayLine, DiffScrollState};
+use super::diff_view;
+use super::file_row::FileRowView;
 use super::watcher::DiffResult;
 use crate::ui::components::scrollbar::{self, ScrollbarState};
 use crate::ui::theme as t;
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
-use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::Arc;
-
-struct PerFileState {
-    diff: Option<FileDiff>,
-    display_lines: Option<Arc<Vec<DiffDisplayLine>>>,
-    scroll: DiffScrollState,
-    selection: diff_view::SelectionState,
-    expanded: Rc<Cell<bool>>,
-    highlights: Option<Arc<diff_view::HighlightCache>>,
-    highlighting: bool,
-    diffing: bool,
-    focus: FocusHandle,
-    char_width_cache: Rc<Cell<Option<Pixels>>>,
-}
-
-impl PerFileState {
-    fn new(cx: &mut App) -> Self {
-        Self {
-            diff: None,
-            display_lines: None,
-            scroll: DiffScrollState::new(),
-            selection: diff_view::SelectionState::new(),
-            expanded: Rc::new(Cell::new(false)),
-            highlights: None,
-            highlighting: false,
-            diffing: false,
-            focus: cx.focus_handle(),
-            char_width_cache: Rc::new(Cell::new(None)),
-        }
-    }
-}
 
 pub struct ChangesTab {
     pub changed_files: Vec<ChangedFile>,
-    file_states: HashMap<String, PerFileState>,
-    /// File path with an active context menu, if any.
-    context_menu: Option<(String, Point<Pixels>)>,
+    file_views: HashMap<String, Entity<FileRowView>>,
     /// Files with pending discard/keep — filtered from bridge results until confirmed gone.
     suppressed: HashSet<String>,
     /// Service for async diff/file operations.
@@ -67,12 +33,19 @@ pub enum FileStatus {
     Deleted,
 }
 
+/// Callbacks handed to each `FileRowView` so it can reach back into
+/// `ChangesTab`/`SidePanel` without holding a direct reference.
+pub struct RowCallbacks {
+    pub on_keep: Box<dyn Fn(&str, FileStatus, &mut App) + 'static>,
+    pub on_discard: Box<dyn Fn(&str, &mut App) + 'static>,
+    pub on_empty: Box<dyn Fn(&str, &mut App) + 'static>,
+}
+
 impl ChangesTab {
     pub fn new() -> Self {
         Self {
             changed_files: Vec::new(),
-            file_states: HashMap::new(),
-            context_menu: None,
+            file_views: HashMap::new(),
             suppressed: HashSet::new(),
             service: None,
             scroll_handle: ScrollHandle::new(),
@@ -82,8 +55,7 @@ impl ChangesTab {
 
     pub fn clear(&mut self) {
         self.changed_files.clear();
-        self.file_states.clear();
-        self.context_menu = None;
+        self.file_views.clear();
         self.suppressed.clear();
     }
 
@@ -95,7 +67,7 @@ impl ChangesTab {
         self.changed_files = snap.changed_files;
     }
 
-    pub fn apply_results(&mut self, result: DiffResult) {
+    pub fn apply_results(&mut self, result: DiffResult, cx: &mut Context<super::SidePanel>) {
         // Lift suppression for any path the bridge has now reported on.
         for path in &result.dirty_paths {
             self.suppressed.remove(path);
@@ -104,47 +76,47 @@ impl ChangesTab {
         // Remove reverted files
         for path in &result.removed_paths {
             self.changed_files.retain(|f| f.path != *path);
-            self.purge_diff_cache(path);
+            self.file_views.remove(path);
         }
 
-        // Invalidate cached diffs for files whose status changed
-        for path in result.updated_files.keys() {
-            self.purge_diff_cache(path);
-        }
-
-        // Merge updated files
+        // Merge updated files and notify any existing row views that their
+        // status changed so they invalidate cached diffs.
         for (path, file) in result.updated_files {
             if self.suppressed.contains(&path) { continue; }
             if let Some(existing) = self.changed_files.iter_mut().find(|f| f.path == path) {
-                *existing = file;
+                let status_changed = existing.status != file.status;
+                *existing = file.clone();
+                if status_changed {
+                    if let Some(view) = self.file_views.get(&path) {
+                        view.update(cx, |row, cx| {
+                            row.update_status(file.status, cx);
+                        });
+                    }
+                }
             } else {
                 self.changed_files.push(file);
             }
         }
     }
 
-    fn purge_diff_cache(&mut self, path: &str) {
-        if let Some(fs) = self.file_states.get_mut(path) {
-            fs.diff = None;
-            fs.display_lines = None;
-            fs.highlights = None;
-        }
-    }
-
     fn suppress_file(&mut self, path: &str) {
         self.suppressed.insert(path.to_string());
         self.changed_files.retain(|f| f.path != path);
-        self.purge_diff_cache(path);
+        self.file_views.remove(path);
+    }
+
+    /// Drop a file from the visible list entirely. Used when a computed diff
+    /// turns out to be empty — the change has effectively been accepted and
+    /// shouldn't linger in the list as a stale entry.
+    fn drop_file(&mut self, path: &str) {
+        self.changed_files.retain(|f| f.path != path);
+        self.file_views.remove(path);
     }
 
     fn suppress_all(&mut self) {
         self.suppressed.extend(self.changed_files.iter().map(|f| f.path.clone()));
         self.changed_files.clear();
-        for fs in self.file_states.values_mut() {
-            fs.diff = None;
-            fs.display_lines = None;
-            fs.highlights = None;
-        }
+        self.file_views.clear();
     }
 
     pub fn render(&mut self, cx: &mut Context<super::SidePanel>) -> AnyElement {
@@ -159,8 +131,35 @@ impl ChangesTab {
                 .into_any_element();
         }
 
-        let total_add: usize = self.file_states.values().filter_map(|fs| fs.diff.as_ref()).map(|d| d.additions).sum();
-        let total_del: usize = self.file_states.values().filter_map(|fs| fs.diff.as_ref()).map(|d| d.deletions).sum();
+        // Sync file_views with changed_files: create new ones, drop stale.
+        let callbacks = self.build_callbacks(cx);
+        let current_paths: HashSet<String> =
+            self.changed_files.iter().map(|f| f.path.clone()).collect();
+        self.file_views.retain(|path, _| current_paths.contains(path));
+        for file in &self.changed_files {
+            if !self.file_views.contains_key(&file.path) {
+                let path = file.path.clone();
+                let status = file.status;
+                let service = self.service.clone();
+                let cbs = callbacks.clone();
+                let parent_scroll = self.scroll_handle.clone();
+                let view = cx.new(move |cx| {
+                    FileRowView::new(path, status, service, cbs, parent_scroll, cx)
+                });
+                self.file_views.insert(file.path.clone(), view);
+            }
+        }
+
+        let total_add: usize = self
+            .file_views
+            .values()
+            .filter_map(|v| v.read(cx).stats().map(|s| s.additions))
+            .sum();
+        let total_del: usize = self
+            .file_views
+            .values()
+            .filter_map(|v| v.read(cx).stats().map(|s| s.deletions))
+            .sum();
         let file_count = self.changed_files.len();
 
         content = content.child(
@@ -236,124 +235,22 @@ impl ChangesTab {
             .on_scroll_wheel(move |_, _, _| { sb_for_scroll.did_scroll(); })
             .pt_1();
 
-            const MAX_VISIBLE_FILES: usize = 500;
-            let overflow = self.changed_files.len().saturating_sub(MAX_VISIBLE_FILES);
+        const MAX_VISIBLE_FILES: usize = 500;
+        let overflow = self.changed_files.len().saturating_sub(MAX_VISIBLE_FILES);
 
-            for file in self.changed_files.iter().take(MAX_VISIBLE_FILES) {
-                let fs = self.file_states.entry(file.path.clone()).or_insert_with(|| PerFileState::new(cx));
-
-                if fs.expanded.get() && fs.diff.is_none() && !fs.diffing {
-                    let svc = self.service.clone();
-                    if let Some(svc) = svc {
-                        fs.diffing = true;
-                        let path = file.path.clone();
-                        let path2 = path.clone();
-                        let handle = svc.spawn_result(move |s| async move {
-                            s.compute_diff(&path).await
-                        });
-                        cx.spawn(async move |this, cx| {
-                            let Ok(diff) = handle.await else { return };
-                            let lines = Arc::new(diff_view::collect_lines(&diff.hunks));
-                            let _ = cx.update(|cx| {
-                                this.update(cx, |panel, cx| {
-                                    if let Some(fs) = panel.changes_tab.file_states.get_mut(&path2) {
-                                        fs.diffing = false;
-                                        fs.display_lines = Some(lines);
-                                        fs.diff = Some(diff);
-                                    }
-                                    cx.notify();
-                                }).ok();
-                            });
-                        }).detach();
-                    }
-                }
-
-                let diff = fs.diff.as_ref();
-                let lines = fs.display_lines.as_ref();
-
-                let highlights = if fs.expanded.get() {
-                    if fs.highlights.is_none() && !fs.highlighting {
-                        if let Some(d) = diff {
-                            fs.highlighting = true;
-                            let path = file.path.clone();
-                            let path2 = path.clone();
-                            let hunks = d.hunks.clone();
-                            cx.spawn(async move |this, cx| {
-                                let result = std::thread::spawn(move || {
-                                    diff_view::compute_highlights(&path, &hunks)
-                                }).join().ok();
-                                if let Some(cache) = result {
-                                    let _ = cx.update(|cx| {
-                                        this.update(cx, |panel, cx| {
-                                            if let Some(fs) = panel.changes_tab.file_states.get_mut(&path2) {
-                                                fs.highlighting = false;
-                                                fs.highlights = Some(Arc::new(cache));
-                                            }
-                                            cx.notify();
-                                        }).ok();
-                                    });
-                                }
-                            }).detach();
-                        }
-                    }
-                    fs.highlights.as_ref()
-                } else {
-                    None
-                };
-                let path = file.path.clone();
-                let status = file.status;
-
-                let on_keep = {
-                    let path = path.clone();
-                    Box::new(cx.listener(move |panel, _: &ClickEvent, _window, cx| {
-                        let svc = panel.changes_tab.service.clone();
-                        if let Some(svc) = svc {
-                            panel.changes_tab.suppress_file(&path);
-                            cx.notify();
-                            let p = path.clone();
-                            svc.spawn(move |s| async move { s.keep_file(&p, status).await });
-                        }
-                    })) as Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>
-                };
-                let on_discard = {
-                    let path = path.clone();
-                    Box::new(cx.listener(move |panel, _: &ClickEvent, _window, cx| {
-                        let svc = panel.changes_tab.service.clone();
-                        if let Some(svc) = svc {
-                            panel.changes_tab.suppress_file(&path);
-                            cx.notify();
-                            let p = path.clone();
-                            svc.spawn(move |s| async move { s.discard_file(&p).await });
-                        }
-                    })) as Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>
-                };
-
-                scroll = scroll.child(diff_view::render_file_section(diff_view::FileSectionParams {
-                    path: &file.path,
-                    status: file.status,
-                    stats: diff.map(|d| DiffStats { additions: d.additions, deletions: d.deletions })
-                        .unwrap_or_default(),
-                    diff,
-                    lines,
-                    highlights,
-                    scroll: &fs.scroll,
-                    selection: &fs.selection,
-                    expanded: &fs.expanded,
-                    focus_handle: &fs.focus,
-                    char_width_cache: &fs.char_width_cache,
-                    parent_scroll: Some(&self.scroll_handle),
-                    on_keep: on_keep,
-                    on_discard: on_discard,
-                }));
+        for file in self.changed_files.iter().take(MAX_VISIBLE_FILES) {
+            if let Some(view) = self.file_views.get(&file.path) {
+                scroll = scroll.child(view.clone());
             }
+        }
 
-            if overflow > 0 {
-                scroll = scroll.child(
-                    div().flex_shrink_0().px_3().py_2()
-                        .text_xs().text_color(t::text_ghost())
-                        .child(format!("and {} more file{}...", overflow, if overflow == 1 { "" } else { "s" })),
-                );
-            }
+        if overflow > 0 {
+            scroll = scroll.child(
+                div().flex_shrink_0().px_3().py_2()
+                    .text_xs().text_color(t::text_ghost())
+                    .child(format!("and {} more file{}...", overflow, if overflow == 1 { "" } else { "s" })),
+            );
+        }
 
         content = content.child(
             div()
@@ -376,12 +273,14 @@ impl ChangesTab {
                 ),
         );
 
-        // Context menu — rendered outside the scroll container so positioning is correct
-        for fs in self.file_states.values() {
-            let sel = fs.selection.get();
+        // Context menu: find any row with an open context menu (only one shows
+        // at a time) and render it anchored at its requested position.
+        for view in self.file_views.values() {
+            let row = view.read(cx);
+            let sel = row.selection().get();
             if let Some(pos) = sel.context_menu {
-                let sel_state = fs.selection.clone();
-                let lines = fs.display_lines.clone();
+                let sel_state = row.selection().clone();
+                let lines = row.display_lines().cloned();
 
                 content = content
                     .child(deferred(
@@ -446,6 +345,55 @@ impl ChangesTab {
         }
 
         content.into_any_element()
+    }
+
+    fn build_callbacks(&self, cx: &mut Context<super::SidePanel>) -> Rc<RowCallbacks> {
+        let panel = cx.weak_entity();
+        let panel_keep = panel.clone();
+        let panel_discard = panel.clone();
+        let panel_empty = panel;
+        Rc::new(RowCallbacks {
+            on_keep: Box::new(move |path: &str, status: FileStatus, cx: &mut App| {
+                let panel = panel_keep.upgrade();
+                let path = path.to_string();
+                if let Some(panel) = panel {
+                    panel.update(cx, |panel, cx| {
+                        let svc = panel.changes_tab.service.clone();
+                        if let Some(svc) = svc {
+                            panel.changes_tab.suppress_file(&path);
+                            cx.notify();
+                            let p = path.clone();
+                            svc.spawn(move |s| async move { s.keep_file(&p, status).await });
+                        }
+                    });
+                }
+            }),
+            on_discard: Box::new(move |path: &str, cx: &mut App| {
+                let panel = panel_discard.upgrade();
+                let path = path.to_string();
+                if let Some(panel) = panel {
+                    panel.update(cx, |panel, cx| {
+                        let svc = panel.changes_tab.service.clone();
+                        if let Some(svc) = svc {
+                            panel.changes_tab.suppress_file(&path);
+                            cx.notify();
+                            let p = path.clone();
+                            svc.spawn(move |s| async move { s.discard_file(&p).await });
+                        }
+                    });
+                }
+            }),
+            on_empty: Box::new(move |path: &str, cx: &mut App| {
+                let panel = panel_empty.upgrade();
+                let path = path.to_string();
+                if let Some(panel) = panel {
+                    panel.update(cx, |panel, cx| {
+                        panel.changes_tab.drop_file(&path);
+                        cx.notify();
+                    });
+                }
+            }),
+        })
     }
 }
 
