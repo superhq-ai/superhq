@@ -2,7 +2,7 @@ mod claude;
 mod codex;
 mod pi;
 
-use crate::db::{RequiredSecret, RequiredSecretEntry};
+use crate::db::{Database, RequiredSecret, RequiredSecretEntry};
 use shuru_sdk::AsyncSandbox;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,6 +13,7 @@ pub const GATEWAY_DUMMY_KEY: &str = "sk-shuru-gateway";
 
 /// Auth gateway spec — tells the boot flow to run a reverse proxy on the host
 /// that swaps a dummy API key for the real credential before forwarding upstream.
+#[derive(Clone, Copy)]
 pub struct AuthGatewaySpec {
     /// Which secret env var the gateway authenticates with (e.g. "OPENAI_API_KEY").
     pub secret_env_var: &'static str,
@@ -125,6 +126,20 @@ pub fn builtin_agents() -> Vec<AgentConfig> {
         claude::config(),
         codex::config(),
     ]
+}
+
+/// Resolve the auth gateway spec for an agent, allowing agent-specific
+/// provider selection instead of a single static gateway.
+pub fn auth_gateway_spec_for_agent(
+    agent_name: &str,
+    db: &Database,
+    fallback: Option<&AgentConfig>,
+) -> Option<AuthGatewaySpec> {
+    match agent_name {
+        "codex" => codex::auth_gateway_spec(db),
+        "pi" => pi::auth_gateway_spec(db),
+        _ => fallback.and_then(|cfg| cfg.auth_gateway),
+    }
 }
 
 /// Run agent-specific auth setup. Dispatches to the agent module's

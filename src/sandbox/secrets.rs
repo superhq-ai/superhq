@@ -16,6 +16,7 @@ pub fn default_hosts(env_var: &str) -> Vec<String> {
             "api.openai.com".into(),
             "chatgpt.com".into(),
         ],
+        "OPENROUTER_API_KEY" => vec!["openrouter.ai".into()],
         _ => vec![],
     }
 }

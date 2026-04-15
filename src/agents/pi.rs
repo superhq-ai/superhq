@@ -1,6 +1,20 @@
 use super::{home, secret_entry, write_config, AgentConfig, AuthGatewaySpec, InstallStep};
+use crate::db::Database;
 use shuru_sdk::AsyncSandbox;
 use std::collections::HashMap;
+
+pub fn auth_gateway_spec(db: &Database) -> Option<AuthGatewaySpec> {
+    if db.has_secret("OPENAI_API_KEY").unwrap_or(false) {
+        Some(AuthGatewaySpec {
+            secret_env_var: "OPENAI_API_KEY",
+            upstream_base: "https://api.openai.com",
+            guest_port: 9101,
+            base_url_env: None, // written to models.json instead
+        })
+    } else {
+        None
+    }
+}
 
 pub fn config() -> AgentConfig {
     AgentConfig {
@@ -53,13 +67,15 @@ pub fn config() -> AgentConfig {
                 &[],
                 true,
             ),
+            secret_entry(
+                "OPENROUTER_API_KEY",
+                "OpenRouter API Key",
+                &["openrouter.ai"],
+                &[],
+                true,
+            ),
         ],
-        auth_gateway: Some(AuthGatewaySpec {
-            secret_env_var: "OPENAI_API_KEY",
-            upstream_base: "https://api.openai.com",
-            guest_port: 9101,
-            base_url_env: None, // written to models.json instead
-        }),
+        auth_gateway: None,
     }
 }
 

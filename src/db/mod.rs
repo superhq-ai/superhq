@@ -197,6 +197,7 @@ fn default_hosts_for_env(env_var: &str) -> Vec<String> {
     match env_var {
         "ANTHROPIC_API_KEY" => vec!["api.anthropic.com".into()],
         "OPENAI_API_KEY" => vec!["api.openai.com".into()],
+        "OPENROUTER_API_KEY" => vec!["openrouter.ai".into()],
         _ => vec![],
     }
 }

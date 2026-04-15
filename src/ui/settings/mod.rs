@@ -17,18 +17,54 @@ use std::sync::Arc;
 use crate::db::Database;
 use crate::ui::theme as t;
 
-/// Display info for well-known env vars.
-fn secret_display_info(env_var: &str) -> (&str, &str) {
-    match env_var {
-        "ANTHROPIC_API_KEY" => ("Anthropic", "Claude Code, Pi"),
-        "OPENAI_API_KEY" => ("OpenAI", "Codex, Pi"),
-        _ => ("Custom", "Custom secret"),
-    }
+struct ProviderMeta {
+    env_var: &'static str,
+    label: &'static str,
+    agents: &'static str,
+    icon: Option<&'static str>,
+    oauth: bool,
 }
 
-/// Whether an env var supports OAuth login as an alternative to API key.
+const PROVIDERS: &[ProviderMeta] = &[
+    ProviderMeta {
+        env_var: "ANTHROPIC_API_KEY",
+        label: "Anthropic",
+        agents: "Claude Code, Pi",
+        icon: Some("icons/providers/anthropic.svg"),
+        oauth: false,
+    },
+    ProviderMeta {
+        env_var: "OPENAI_API_KEY",
+        label: "OpenAI",
+        agents: "Codex, Pi",
+        icon: Some("icons/providers/openai.svg"),
+        oauth: true,
+    },
+    ProviderMeta {
+        env_var: "OPENROUTER_API_KEY",
+        label: "OpenRouter",
+        agents: "Codex",
+        icon: Some("icons/providers/openrouter.svg"),
+        oauth: false,
+    },
+];
+
+fn provider_meta(env_var: &str) -> Option<&'static ProviderMeta> {
+    PROVIDERS.iter().find(|p| p.env_var == env_var)
+}
+
+fn secret_display_info(env_var: &str) -> (&str, &str) {
+    provider_meta(env_var)
+        .map(|p| (p.label, p.agents))
+        .unwrap_or(("Custom", "Custom secret"))
+}
+
 fn supports_oauth(env_var: &str) -> bool {
-    env_var == "OPENAI_API_KEY"
+    provider_meta(env_var).is_some_and(|p| p.oauth)
+}
+
+pub(crate) fn provider_icon(env_var: &str) -> Option<&'static str> {
+    provider_meta(env_var).and_then(|p| p.icon)
 }
 
 // ── Settings nav tabs ────────────────────────────────────────────

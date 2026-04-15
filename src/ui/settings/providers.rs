@@ -2,8 +2,11 @@ use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 use crate::ui::theme as t;
 use crate::sandbox::secrets;
-use super::{SettingsPanel, OAuthStatus, supports_oauth};
+use super::{SettingsPanel, OAuthStatus, supports_oauth, provider_icon};
 use super::card::*;
+
+const PROVIDER_ICON_SIZE: f32 = 13.0;
+const PROVIDER_ICON_GAP: f32 = 8.0;
 
 impl SettingsPanel {
     pub(super) fn save_secret(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -345,6 +348,8 @@ impl SettingsPanel {
                     )
                 });
 
+            let icon_path = provider_icon(&row.env_var);
+
             let mut row_el = div()
                 .px_4()
                 .py_3()
@@ -363,15 +368,32 @@ impl SettingsPanel {
                                 .gap(px(2.0))
                                 .child(
                                     div()
-                                        .text_xs()
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(t::text_secondary())
-                                        .child(row.label.clone()),
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(PROVIDER_ICON_GAP))
+                                        .when_some(icon_path, |el, path| {
+                                            el.child(
+                                                svg()
+                                                    .path(SharedString::from(path))
+                                                    .size(px(PROVIDER_ICON_SIZE))
+                                                    .text_color(t::text_secondary()),
+                                            )
+                                        })
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(t::text_secondary())
+                                                .child(row.label.clone()),
+                                        ),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(t::text_ghost())
+                                        .when(icon_path.is_some(), |el| {
+                                            el.pl(px(PROVIDER_ICON_SIZE + PROVIDER_ICON_GAP))
+                                        })
                                         .child(format!("{} \u{00b7} {}", row.env_var, row.description)),
                                 ),
                         )

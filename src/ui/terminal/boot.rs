@@ -338,7 +338,8 @@ impl super::TerminalPanel {
             let static_config = agents::builtin_agents()
                 .into_iter()
                 .find(|c| c.name == agent_slug);
-            let gateway_spec = static_config.as_ref().and_then(|c| c.auth_gateway.as_ref());
+            let gateway_spec =
+                agents::auth_gateway_spec_for_agent(&agent_slug, &db_for_secrets, static_config.as_ref());
 
             // === REFRESH OAUTH TOKENS & BUILD SECRETS ===
             {
@@ -385,6 +386,20 @@ impl super::TerminalPanel {
                             .get_secret_auth_method(spec.secret_env_var)
                             .unwrap_or_else(|_| "api_key".into());
                         gateway_env.insert("_GATEWAY_AUTH_METHOD".to_string(), auth_method.clone());
+                        if agent_slug == "codex" {
+                            let provider = if spec.secret_env_var == "OPENROUTER_API_KEY" {
+                                "openrouter"
+                            } else {
+                                "openai"
+                            };
+                            gateway_env.insert("_CODEX_PROVIDER".to_string(), provider.to_string());
+                            if spec.secret_env_var == "OPENROUTER_API_KEY" {
+                                gateway_env.insert(
+                                    "OPENROUTER_API_KEY".to_string(),
+                                    agents::GATEWAY_DUMMY_KEY.to_string(),
+                                );
+                            }
+                        }
                         // For OAuth, build a stub JWT with just the accountId so Pi's
                         // openai-codex-responses can parse it without real credentials.
                         if auth_method == "oauth" {
@@ -410,7 +425,7 @@ impl super::TerminalPanel {
                 mount_path.as_deref(),
                 secrets_map,
                 boot_from.as_deref(),
-                gateway_spec,
+                gateway_spec.as_ref(),
                 auth_gateway_handle.as_ref(),
             );
 

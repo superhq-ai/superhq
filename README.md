@@ -27,7 +27,7 @@ Or download the latest `.dmg` from the [Releases](https://github.com/superhq-ai/
 | Agent | Auth | Notes |
 |-------|------|-------|
 | **Claude Code** | Anthropic API key | Installed automatically via npm |
-| **OpenAI Codex** | OpenAI API key or ChatGPT Plus/Pro subscription (OAuth) | Use your existing subscription — SuperHQ authenticates via OAuth so you don't need a separate API key |
+| **OpenAI Codex** | OpenAI API key, OpenRouter API key, or ChatGPT Plus/Pro subscription (OAuth) | OpenAI/OAuth use the auth gateway; if `OPENROUTER_API_KEY` is set, Codex routes through OpenRouter |
 | **Pi** | Anthropic API key and/or OpenAI API key (or ChatGPT Plus/Pro via OAuth) | At least one provider required. OpenAI models routed through auth gateway |
 
 ## Security Model
