@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.6
+
+- Fixed crash when clicking Open Settings from the missing API key banner.
+- Traffic lights and custom titlebar icons are now visually centered.
+
 ## 0.3.5
 
 - OpenRouter is now a built-in provider with bundled icon, default host, and Codex integration. Anthropic and OpenAI rows in the Providers settings also pick up their proper logos.
