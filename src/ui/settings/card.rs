@@ -40,19 +40,26 @@ pub fn settings_card(rows: Vec<AnyElement>) -> impl IntoElement {
 }
 
 /// A single row inside a settings card: label+description on the left, control on the right.
+///
+/// The text column grows (`flex_grow` + `min_w_0`) so long descriptions
+/// wrap inside the card instead of overflowing. The control sits at its
+/// natural width, pinned right, with a small left margin for breathing room.
 pub fn settings_row(
     title: &str,
     description: &str,
     control: impl IntoElement,
 ) -> impl IntoElement {
     div()
+        .w_full()
         .px_4()
         .py_3()
         .flex()
         .items_center()
-        .justify_between()
+        .gap_4()
         .child(
             div()
+                .flex_grow()
+                .min_w_0()
                 .flex()
                 .flex_col()
                 .gap(px(2.0))
@@ -70,5 +77,5 @@ pub fn settings_row(
                         .child(description.to_string()),
                 ),
         )
-        .child(control)
+        .child(div().flex_shrink_0().child(control))
 }
