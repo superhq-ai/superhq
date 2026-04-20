@@ -1,0 +1,80 @@
+---
+// Announcement banner pinned at the very top of the page. Scrolls
+// away with the rest of the content (not sticky) so it doesn't
+// permanently eat vertical space on long scrolls. Entire bar is a
+// clickable link to the mobile remote client.
+---
+
+<a
+  class="banner"
+  href="https://remote.superhq.ai"
+  target="_blank"
+  rel="noreferrer"
+  data-umami-event="remote-banner-click"
+>
+  <span class="banner-label">New</span>
+  <span class="banner-text">Control your agents from your phone at remote.superhq.ai</span>
+  <span class="banner-arrow" aria-hidden="true">→</span>
+</a>
+
+<style>
+  .banner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 88px 10px 16px;
+    background: var(--ink-2);
+    border-bottom: 1px solid var(--line);
+    color: var(--fg-dim);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    transition: color 140ms ease, background 140ms ease;
+  }
+
+  .banner:hover {
+    background: var(--ink-3);
+    color: var(--fg);
+  }
+
+  .banner-label {
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--line-strong);
+    color: var(--fg);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .banner-arrow {
+    transition: transform 160ms ease;
+  }
+
+  .banner:hover .banner-arrow {
+    transform: translateX(3px);
+  }
+
+  @media (max-width: 640px) {
+    .banner {
+      padding: 9px 14px;
+      font-size: 12px;
+      gap: 8px;
+    }
+    .banner-text {
+      /* Shorten on narrow screens so it fits next to the label + arrow. */
+      display: inline-block;
+      max-width: calc(100vw - 120px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .banner-label {
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+  }
+</style>
