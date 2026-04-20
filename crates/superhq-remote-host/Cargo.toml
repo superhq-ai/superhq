@@ -1,0 +1,25 @@
+[package]
+name = "superhq-remote-host"
+version = "0.1.0"
+edition = "2024"
+description = "Host-side transport for SuperHQ remote control"
+
+[dependencies]
+superhq-remote-proto = { path = "../superhq-remote-proto" }
+iroh = { version = "0.95", default-features = false }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "macros", "sync"] }
+tracing = "0.1"
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4"] }
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+thiserror = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
