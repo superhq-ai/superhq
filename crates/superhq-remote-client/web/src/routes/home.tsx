@@ -10,6 +10,7 @@ import Screen from "../components/Screen";
 import SettingsSheet from "../components/SettingsSheet";
 import { useConnectionStore } from "../state/store";
 import { activateWorkspace, refreshSnapshot } from "../lib/session";
+import { track } from "../lib/analytics";
 import type { WorkspaceInfo } from "../lib/types";
 
 export default function HomeRoute() {
@@ -59,6 +60,7 @@ export default function HomeRoute() {
     const onOpenWorkspace = useCallback(
         async (ws: WorkspaceInfo) => {
             if (ws.is_active) {
+                track("workspace.open", { already_active: true });
                 navigate(`/workspace/${ws.workspace_id}`);
                 return;
             }
@@ -69,6 +71,7 @@ export default function HomeRoute() {
                 await activateWorkspace(client, ws.workspace_id);
                 const snap = await refreshSnapshot(client);
                 replaceSnapshot(snap.workspaces, snap.tabs);
+                track("workspace.open", { already_active: false });
                 navigate(`/workspace/${ws.workspace_id}`);
             } catch (e) {
                 setActionError(

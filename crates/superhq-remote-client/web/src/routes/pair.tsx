@@ -23,6 +23,7 @@ import {
     BiometricIllustration,
     PairingModalIllustration,
 } from "../components/DesktopModalIllustration";
+import { track } from "../lib/analytics";
 
 type Status =
     | { kind: "idle" }
@@ -59,9 +60,11 @@ export default function PairRoute() {
                 result = await client.pairing_request(label);
             } catch (e) {
                 if (cancelledRef.current) {
+                    track("pair.cancelled");
                     setStatus({ kind: "idle" });
                     return;
                 }
+                track("pair.failure");
                 setStatus({
                     kind: "error",
                     message:
@@ -96,6 +99,7 @@ export default function PairRoute() {
                 label: `SuperHQ host ${id.slice(0, 8)}…`,
                 pairedAt: Date.now(),
             });
+            track("pair.success");
             navigate("/", { replace: true });
         },
         [navigate, setPairedHost],

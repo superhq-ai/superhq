@@ -15,6 +15,7 @@ import {
     pruneTerminalEntries,
     resetTerminalRegistry,
 } from "./components/Terminal";
+import { track } from "./lib/analytics";
 
 function RequirePair({ children }: { children: React.ReactNode }) {
     const paired = useConnectionStore((s) => s.pairedHost);
@@ -51,8 +52,10 @@ function PairedSessionGate() {
                 boot.tabs,
                 boot.agents,
             );
+            track("session.ready");
         } catch (e) {
             setSessionError(e instanceof Error ? e.message : String(e));
+            track("session.error");
         }
     }, [host, setSessionConnecting, setSessionReady, setSessionError]);
 

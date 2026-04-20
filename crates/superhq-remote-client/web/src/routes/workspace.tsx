@@ -22,6 +22,7 @@ import Sheet from "../components/Sheet";
 import TerminalHost, { type TerminalHandle } from "../components/Terminal";
 import { useConnectionStore } from "../state/store";
 import { closeTab, createTab, refreshSnapshot } from "../lib/session";
+import { track } from "../lib/analytics";
 import type { AgentInfo, TabCreateSpec, TabInfo } from "../lib/types";
 
 export default function WorkspaceRoute() {
@@ -89,6 +90,7 @@ export default function WorkspaceRoute() {
                 const snap = await refreshSnapshot(client);
                 replaceSnapshot(snap.workspaces, snap.tabs);
                 setActiveTabId(created.tab_id);
+                track("tab.open", { kind: spec.kind });
             } catch (e) {
                 setActionError(
                     e instanceof Error ? e.message : "Failed to create tab",
@@ -126,6 +128,7 @@ export default function WorkspaceRoute() {
                 const snap = await refreshSnapshot(client);
                 replaceSnapshot(snap.workspaces, snap.tabs);
                 setCloseTarget(null);
+                track("tab.close", { mode, kind: t.kind });
             } catch (e) {
                 setActionError(
                     e instanceof Error ? e.message : "Failed to close tab",

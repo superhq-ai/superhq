@@ -13,6 +13,7 @@
 // banner and the update silently applies on the next cold launch.
 
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { track } from "../lib/analytics";
 
 export default function PWAUpdatePrompt() {
     const {
@@ -41,7 +42,10 @@ export default function PWAUpdatePrompt() {
             <div className="glass-sheet pointer-events-auto flex items-center gap-2 rounded-full py-1.5 pr-1.5 pl-4 text-[13px] shadow-lg">
                 <span className="text-app-text">Update available</span>
                 <button
-                    onClick={() => void updateServiceWorker(true)}
+                    onClick={() => {
+                        track("pwa.update.apply");
+                        void updateServiceWorker(true);
+                    }}
                     className="glass-pill glass-pill--accent rounded-full px-3 py-1.5 text-[12.5px] font-medium text-white"
                 >
                     Reload
