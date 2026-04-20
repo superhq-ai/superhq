@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+- Remote control: pair a phone or browser with a running host and drive your workspaces from it.
+  - QR code or short host id for pairing.
+  - Host runs an iroh endpoint behind a Settings toggle.
+  - Paired devices list, audit log, and manual host id rotation in Settings. Rotation unpairs every device and generates a fresh id.
+  - Mobile PWA at remote.superhq.ai with the workspace list, tab bar, xterm terminal, and the same new-tab menu as the desktop.
+  - Tabs stay alive across navigation so switching between Home and a workspace does not replay scrollback.
+  - Agent tab failures (missing API key, install script errors) now show on remote clients instead of leaving the tab spinning.
+- Line-level staging in the review panel. Select individual lines of a diff to keep or discard without splitting hunks.
+- Ask Agent from diff selection. Right-click a hunk and send a focused prompt to the active agent with the surrounding code.
+- Remote transport hardening:
+  - Auth is required by default on session.hello; notifications no longer reach unauthenticated peers.
+  - Control-stream frame cap at 1 MiB. Handshake and stream-init deadlines. Per-connection stream count is bounded.
+  - HMAC proofs are single-use per device within the skew window.
+  - Endpoint rotation blocks on the old server's shutdown and aborts if it fails.
+  - Remote-control setting defaults to off on a settings-read failure instead of on.
+  - Workspace removal purges its pty_map entries.
+- RPC client has a 60s per-call timeout and drains pending calls on disconnect instead of hanging.
+- PWA propagates disconnects so the session reconnects instead of getting stuck.
+- PWA terminal self-heals after a PTY failure so the next tab mount reopens cleanly.
+- Host-supplied agent SVG icons are sanitized before rendering.
+
 ## 0.3.6
 
 - Fixed crash when clicking Open Settings from the missing API key banner.
