@@ -1,7 +1,8 @@
 //! Per-connection state and the control-stream JSON-RPC dispatch loop.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use iroh::endpoint::{Connection, RecvStream, SendStream};
@@ -11,8 +12,30 @@ use superhq_remote_proto::{
     stream::{StreamInit, STREAM_INIT},
     Message, Notification, Request, Response, RpcError,
 };
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufRead, BufReader};
 use tracing::{debug, info, warn};
+
+/// Max size of a single control-stream JSON-RPC frame (one newline-
+/// terminated message). The real payloads we care about (session.hello
+/// with a resume token, a snapshot.invalidated push, etc.) are well
+/// under 64 KiB; 1 MiB leaves headroom for a future large-notification
+/// case without letting a misbehaving client OOM the host.
+const MAX_CONTROL_FRAME_BYTES: usize = 1 << 20;
+
+/// How long to wait for the peer to open the control stream after the
+/// connection is accepted. A reachable peer that never opens it would
+/// otherwise keep the detached session task alive indefinitely.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long a subordinate data stream has to send its `stream.init`
+/// line. Read-until-newline would otherwise block forever on a
+/// half-open stream.
+const STREAM_INIT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Soft cap on the number of subordinate data streams a single
+/// connection is allowed to keep open concurrently. Keeps a slowloris
+/// style attack from accumulating detached stream tasks forever.
+const MAX_DATA_STREAMS_PER_CONN: usize = 64;
 
 use crate::handler::RemoteHandler;
 
@@ -24,6 +47,10 @@ use crate::handler::RemoteHandler;
 pub struct SessionState {
     pub authenticated: AtomicBool,
     pub device_id: Mutex<Option<String>>,
+    /// Number of live subordinate data streams on this connection.
+    /// Incremented when a stream task starts, decremented on exit.
+    /// Gates acceptance so a single client can't open unbounded streams.
+    pub data_streams: AtomicUsize,
 }
 
 impl SessionState {
@@ -31,6 +58,7 @@ impl SessionState {
         Self {
             authenticated: AtomicBool::new(false),
             device_id: Mutex::new(None),
+            data_streams: AtomicUsize::new(0),
         }
     }
 
@@ -65,11 +93,15 @@ pub async fn drive_connection<H: RemoteHandler>(
     // be correlated to the authenticated device.
     let session = Arc::new(SessionState::new());
 
-    // Control stream is the first bidirectional stream opened by the peer.
-    let (ctrl_send, ctrl_recv) = connection
-        .accept_bi()
-        .await
-        .map_err(|e| anyhow!("accept control stream: {e}"))?;
+    // Control stream is the first bidirectional stream opened by the
+    // peer. Wrap in a short timeout — otherwise a connected-but-silent
+    // peer would keep the detached session task alive indefinitely.
+    let (ctrl_send, ctrl_recv) =
+        match tokio::time::timeout(HANDSHAKE_TIMEOUT, connection.accept_bi()).await {
+            Ok(Ok(pair)) => pair,
+            Ok(Err(e)) => return Err(anyhow!("accept control stream: {e}")),
+            Err(_) => return Err(anyhow!("handshake timed out waiting for control stream")),
+        };
 
     let control_handler = handler.clone();
     let control_session = session.clone();
@@ -91,11 +123,42 @@ pub async fn drive_connection<H: RemoteHandler>(
         tokio::select! {
             bi = connection.accept_bi() => {
                 match bi {
-                    Ok((send, recv)) => {
+                    Ok((mut send, recv)) => {
+                        // Gate: soft cap on concurrent data streams per
+                        // connection. A compliant client never opens
+                        // more than a handful; anything above the cap
+                        // is rejected with an RPC error so the peer
+                        // sees a clean failure instead of a stall.
+                        let prior = session.data_streams.fetch_add(1, Ordering::AcqRel);
+                        if prior >= MAX_DATA_STREAMS_PER_CONN {
+                            session.data_streams.fetch_sub(1, Ordering::AcqRel);
+                            warn!(
+                                cap = MAX_DATA_STREAMS_PER_CONN,
+                                "remote-host: rejecting data stream over cap"
+                            );
+                            let err = Response::error(
+                                0,
+                                RpcError::new(
+                                    superhq_remote_proto::error_code::INTERNAL_ERROR,
+                                    format!(
+                                        "server refused stream: open stream cap of \
+                                         {MAX_DATA_STREAMS_PER_CONN} reached"
+                                    ),
+                                ),
+                            );
+                            if let Ok(wire) = encode_response(&err) {
+                                let _ = send.write_all(wire.as_bytes()).await;
+                                let _ = send.write_all(b"\n").await;
+                            }
+                            let _ = send.finish();
+                            continue;
+                        }
                         let handler = handler.clone();
                         let session = session.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = drive_data_stream(send, recv, handler, session).await {
+                            let result = drive_data_stream(send, recv, handler, session.clone()).await;
+                            session.data_streams.fetch_sub(1, Ordering::AcqRel);
+                            if let Err(e) = result {
                                 warn!(error = %e, "remote-host: data stream error");
                             }
                         });
@@ -140,7 +203,7 @@ async fn drive_control_stream<H: RemoteHandler>(
         }
         tokio::select! {
             // Client → host request / notification
-            read = reader.read_until(b'\n', &mut buf) => {
+            read = read_until_capped(&mut reader, &mut buf, MAX_CONTROL_FRAME_BYTES) => {
                 let n = read?;
                 if n == 0 {
                     info!("remote-host: control stream closed by peer");
@@ -176,7 +239,14 @@ async fn drive_control_stream<H: RemoteHandler>(
                         warn!(id = resp.id, "remote-host: unexpected response from client");
                     }
                     Err(e) => {
-                        warn!(error = %e, body = %text, "remote-host: decode failed; dropping");
+                        // Never log attacker-controlled bodies verbatim —
+                        // lets a malicious peer balloon host logs with
+                        // arbitrary content.
+                        warn!(
+                            error = %e,
+                            len = text.len(),
+                            "remote-host: decode failed; dropping"
+                        );
                     }
                 }
             }
@@ -285,8 +355,19 @@ async fn drive_data_stream<H: RemoteHandler>(
     session: Arc<SessionState>,
 ) -> Result<()> {
     // Read the init line byte-by-byte so we don't over-consume into the
-    // raw data region that follows the newline.
-    let init_text = read_line(&mut recv).await?;
+    // raw data region that follows the newline. Bounded timeout — a
+    // half-open stream that never sends init would otherwise block.
+    let init_text =
+        match tokio::time::timeout(STREAM_INIT_TIMEOUT, read_line(&mut recv)).await {
+            Ok(Ok(line)) => line,
+            Ok(Err(e)) => return Err(e),
+            Err(_) => {
+                return Err(anyhow!(
+                    "stream.init timed out after {:?}",
+                    STREAM_INIT_TIMEOUT
+                ))
+            }
+        };
     let Some(init_text) = init_text else {
         return Ok(()); // stream closed before init
     };
@@ -339,6 +420,44 @@ async fn drive_data_stream<H: RemoteHandler>(
             // Not yet implemented; close the stream politely.
             let _ = send.finish();
             Ok(())
+        }
+    }
+}
+
+/// Read from `reader` into `buf` until the first `\n` (inclusive) or
+/// cap is exceeded. Equivalent to `AsyncBufReadExt::read_until` but
+/// fails closed instead of growing the buffer unbounded — a single
+/// newline-free frame from a malicious peer would otherwise drive
+/// process memory up until the kernel OOM-killed the host.
+async fn read_until_capped<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    cap: usize,
+) -> Result<usize> {
+    use tokio::io::AsyncBufReadExt;
+    let start_len = buf.len();
+    loop {
+        let chunk = match reader.fill_buf().await {
+            Ok(c) => c,
+            Err(e) => return Err(e.into()),
+        };
+        if chunk.is_empty() {
+            return Ok(buf.len() - start_len);
+        }
+        let nl_pos = chunk.iter().position(|&b| b == b'\n');
+        let take = match nl_pos {
+            Some(i) => i + 1,
+            None => chunk.len(),
+        };
+        if buf.len() + take > cap {
+            return Err(anyhow!(
+                "control frame exceeds cap of {cap} bytes; closing stream"
+            ));
+        }
+        buf.extend_from_slice(&chunk[..take]);
+        reader.consume(take);
+        if nl_pos.is_some() {
+            return Ok(buf.len() - start_len);
         }
     }
 }
