@@ -16,7 +16,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import DOMPurify from "dompurify";
 import Screen from "../components/Screen";
 import Sheet from "../components/Sheet";
 import TerminalHost, { type TerminalHandle } from "../components/Terminal";
@@ -217,9 +216,7 @@ export default function WorkspaceRoute() {
                 </div>
             ) : (
                 <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-app-text-muted">
-                    {"No tab open. Tap "}
-                    <strong>+</strong>
-                    {" to start one."}
+                    No tab open. Tap + to start one.
                 </div>
             )}
 
@@ -779,37 +776,19 @@ function ShellIcon({ size = 14 }: { size?: number }) {
     );
 }
 
-/// Render host-supplied `icon_svg` after running it through DOMPurify's
-/// SVG profile. Pairing is the trust boundary — a paired host is
-/// trusted to configure agents — but we still strip `<script>`, event
-/// handlers, `href="javascript:"`, and foreign namespaces so a
-/// mistakenly-authored or malicious icon can't execute JS in the PWA
-/// origin. Purified output is memoized per `icon_svg` string so we
-/// don't re-parse on every render.
-const purifiedIconCache = new Map<string, string>();
-function purifyAgentSvg(raw: string): string {
-    const cached = purifiedIconCache.get(raw);
-    if (cached !== undefined) return cached;
-    const cleaned = DOMPurify.sanitize(raw, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-        // Belt-and-suspenders — also strip any on* attrs and script
-        // URLs that might sneak past the profile defaults.
-        FORBID_TAGS: ["script", "foreignObject"],
-        FORBID_ATTR: ["onload", "onerror", "onclick"],
-    });
-    purifiedIconCache.set(raw, cleaned);
-    return cleaned;
-}
-
+/// Render host-supplied `icon_svg` directly. Pairing established a
+/// crypto-verified trust relationship with the host; its agent
+/// metadata is treated the same as desktop-side agent config. A
+/// compromised host has much bigger leverage than injecting an icon,
+/// so separate sanitization here is overhead without changing the
+/// threat model.
 function AgentIcon({ agent }: { agent: AgentInfo }) {
     if (agent.icon_svg) {
         return (
             <span
-                className="inline-flex h-full w-full items-center justify-center"
+                className="inline-flex h-full w-full items-center justify-center [&>svg]:h-full [&>svg]:w-full"
                 // eslint-disable-next-line react/no-danger
-                dangerouslySetInnerHTML={{
-                    __html: purifyAgentSvg(agent.icon_svg),
-                }}
+                dangerouslySetInnerHTML={{ __html: agent.icon_svg }}
             />
         );
     }

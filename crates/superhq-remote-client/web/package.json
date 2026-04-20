@@ -12,7 +12,6 @@
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "dompurify": "^3.4.0",
     "jsqr": "^1.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
