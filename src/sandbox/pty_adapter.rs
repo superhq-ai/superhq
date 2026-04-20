@@ -179,17 +179,3 @@ impl Read for ShuruPtyReader {
     }
 }
 
-/// Wraps ShellWriter for resize operations.
-pub struct ShuruPtyResizer {
-    writer: ShellWriter,
-}
-
-impl ShuruPtyResizer {
-    pub fn new(writer: ShellWriter) -> Self {
-        Self { writer }
-    }
-
-    pub fn resize(&self, cols: u16, rows: u16) {
-        let _ = self.writer.resize(rows, cols);
-    }
-}

@@ -188,7 +188,7 @@ impl AppView {
         let pairings =
             std::sync::Arc::new(ui::remote::PairingStore::new(db.clone()));
         let mut remote_access =
-            ui::remote::RemoteAccess::new(tokio_handle, pty_map.clone(), db.clone());
+            ui::remote::RemoteAccess::new(tokio_handle, db.clone());
         // Fail closed: if the settings read fails (corrupt DB, partial
         // migration), default to remote control disabled instead of
         // silently enabling the iroh endpoint.

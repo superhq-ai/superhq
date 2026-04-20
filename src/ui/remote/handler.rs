@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use superhq_remote_host::{
-    auth, generate_device_key, now_secs, verify_proof, AuthError, EndpointId, RecvStream,
+    generate_device_key, now_secs, verify_proof, AuthError, EndpointId, RecvStream,
     RemoteHandler, SendStream,
 };
 use superhq_remote_proto::{
@@ -442,5 +442,3 @@ fn hostname() -> Option<String> {
         })
 }
 
-// Re-export auth types for convenience.
-pub use auth::{compute_proof, AuthError as HandlerAuthError};

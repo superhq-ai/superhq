@@ -51,31 +51,19 @@ pub struct BlobHandle {
 }
 
 /// Tab classification.
-///
-/// The `Unknown` variant is a forward-compat catch-all: a newer host
-/// that introduces a new tab kind will serialize something our older
-/// decoder can't match, which would otherwise fail the whole `TabInfo`
-/// payload. `#[serde(other)]` routes unknown strings to `Unknown` so
-/// the client degrades gracefully — it renders a generic glyph and
-/// keeps the snapshot intact.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TabKind {
     Agent,
     Shell,
     HostShell,
-    #[serde(other)]
-    Unknown,
 }
 
 /// Agent lifecycle state as reported from event hooks.
-///
-/// The existing `Unknown` variant is now marked `#[serde(other)]`, so
-/// any future state value (e.g. a new `"compacting"`) deserializes as
-/// `Unknown` on older clients instead of failing the whole payload.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum AgentState {
+    Unknown,
     Running {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tool: Option<String>,
@@ -85,9 +73,6 @@ pub enum AgentState {
         message: Option<String>,
     },
     Idle,
-    // Must be the last variant — `#[serde(other)]` requires it.
-    #[serde(other)]
-    Unknown,
 }
 
 /// A tab as visible to a remote client.
@@ -132,18 +117,12 @@ pub struct AgentInfo {
 }
 
 /// File change status in a diff view.
-///
-/// `Unknown` is a forward-compat catch-all (see `TabKind`) so an older
-/// client can still render a diff whose entries include a status the
-/// client doesn't yet understand.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FileStatus {
     Added,
     Modified,
     Deleted,
-    #[serde(other)]
-    Unknown,
 }
 
 #[cfg(test)]
@@ -178,26 +157,5 @@ mod tests {
     fn file_status_roundtrip() {
         let wire = serde_json::to_value(FileStatus::Modified).unwrap();
         assert_eq!(wire, json!("modified"));
-    }
-
-    #[test]
-    fn tab_kind_unknown_variant_fallback() {
-        // Simulates a newer host shipping a new kind value. Older
-        // decoders must not fail the whole payload.
-        let decoded: TabKind = serde_json::from_value(json!("freshly_invented")).unwrap();
-        assert_eq!(decoded, TabKind::Unknown);
-    }
-
-    #[test]
-    fn agent_state_unknown_variant_fallback() {
-        let decoded: AgentState =
-            serde_json::from_value(json!({"state": "compacting"})).unwrap();
-        assert_eq!(decoded, AgentState::Unknown);
-    }
-
-    #[test]
-    fn file_status_unknown_variant_fallback() {
-        let decoded: FileStatus = serde_json::from_value(json!("renamed")).unwrap();
-        assert_eq!(decoded, FileStatus::Unknown);
     }
 }

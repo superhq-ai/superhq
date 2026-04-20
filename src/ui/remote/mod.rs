@@ -40,7 +40,6 @@ pub struct RemoteAccess {
     server: Option<RemoteServer>,
     tokio_handle: tokio::runtime::Handle,
     state: Arc<RwLock<RemoteStateSnapshot>>,
-    pty_map: PtyMap,
     db: Arc<Database>,
     /// Broadcast channel for host → client push notifications. Each
     /// connected session subscribes; `push_snapshot` fans out a
@@ -55,7 +54,6 @@ pub struct RemoteAccess {
 impl RemoteAccess {
     pub fn new(
         tokio_handle: tokio::runtime::Handle,
-        pty_map: PtyMap,
         db: Arc<Database>,
     ) -> Self {
         let (notifications, _) = tokio::sync::broadcast::channel(16);
@@ -63,7 +61,6 @@ impl RemoteAccess {
             server: None,
             tokio_handle,
             state: Arc::new(RwLock::new(RemoteStateSnapshot::default())),
-            pty_map,
             db,
             notifications,
             last_snapshot_hash: std::sync::Mutex::new(None),
@@ -76,10 +73,6 @@ impl RemoteAccess {
         &self,
     ) -> tokio::sync::broadcast::Sender<Arc<String>> {
         self.notifications.clone()
-    }
-
-    pub fn pty_map(&self) -> PtyMap {
-        self.pty_map.clone()
     }
 
     pub fn is_running(&self) -> bool {

@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import DOMPurify from "dompurify";
 import Screen from "../components/Screen";
 import Sheet from "../components/Sheet";
 import TerminalHost, { type TerminalHandle } from "../components/Terminal";
@@ -769,29 +770,37 @@ function ShellIcon({ size = 14 }: { size?: number }) {
     );
 }
 
-/// Agents we ship bundled art for. Anything not in this list falls
-/// back to the default glyph.
-const BUNDLED_AGENT_SLUGS = new Set([
-    "claude",
-    "codex",
-    "gemini",
-    "opencode",
-    "pi",
-]);
+/// Render host-supplied `icon_svg` after running it through DOMPurify's
+/// SVG profile. Pairing is the trust boundary — a paired host is
+/// trusted to configure agents — but we still strip `<script>`, event
+/// handlers, `href="javascript:"`, and foreign namespaces so a
+/// mistakenly-authored or malicious icon can't execute JS in the PWA
+/// origin. Purified output is memoized per `icon_svg` string so we
+/// don't re-parse on every render.
+const purifiedIconCache = new Map<string, string>();
+function purifyAgentSvg(raw: string): string {
+    const cached = purifiedIconCache.get(raw);
+    if (cached !== undefined) return cached;
+    const cleaned = DOMPurify.sanitize(raw, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+        // Belt-and-suspenders — also strip any on* attrs and script
+        // URLs that might sneak past the profile defaults.
+        FORBID_TAGS: ["script", "foreignObject"],
+        FORBID_ATTR: ["onload", "onerror", "onclick"],
+    });
+    purifiedIconCache.set(raw, cleaned);
+    return cleaned;
+}
 
-/// Host-supplied `agent.icon_svg` used to be rendered via
-/// `dangerouslySetInnerHTML` — a compromised host could inject
-/// arbitrary markup into the client origin. We now render a bundled
-/// icon looked up by slug, and ignore `icon_svg` entirely.
 function AgentIcon({ agent }: { agent: AgentInfo }) {
-    const slug = agent.slug ?? "";
-    if (BUNDLED_AGENT_SLUGS.has(slug)) {
+    if (agent.icon_svg) {
         return (
-            <img
-                src={`/icons/agents/${slug}.svg`}
-                alt=""
-                aria-hidden
-                className="h-full w-full"
+            <span
+                className="inline-flex h-full w-full items-center justify-center"
+                // eslint-disable-next-line react/no-danger
+                dangerouslySetInnerHTML={{
+                    __html: purifyAgentSvg(agent.icon_svg),
+                }}
             />
         );
     }
