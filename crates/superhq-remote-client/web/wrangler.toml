@@ -1,0 +1,15 @@
+# Cloudflare Workers with Static Assets.
+#
+# Build step (vite build) lands the SPA in ./dist. The [assets]
+# directive hands that directory straight to Workers — no Worker code
+# needed yet. When we eventually want dynamic server bits (e.g.
+# account sync), add `main = "./worker.ts"` and write a fetch handler.
+
+name = "superhq-remote-web"
+compatibility_date = "2025-04-01"
+
+[assets]
+directory = "./dist"
+# SPA routing: unknown paths serve index.html so react-router can
+# match client-side.
+not_found_handling = "single-page-application"

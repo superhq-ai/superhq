@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-tsc
+dev-dist
+.vite
+.wrangler
+*.tsbuildinfo
+*.local
+.DS_Store
