@@ -65,27 +65,18 @@ const agents = [
     margin: 0;
     padding: 0;
     display: flex;
-    gap: 12px;
+    gap: 28px;
     flex-wrap: wrap;
   }
 
   .agent-tile {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 20px;
-    border: 1px solid var(--line-strong);
-    background: var(--ink-1);
-    border-radius: var(--radius);
+    gap: 10px;
     color: var(--fg);
     font-family: var(--mono);
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     letter-spacing: 0.005em;
-    transition: border-color 140ms ease, background 140ms ease;
-  }
-  .agent-tile:hover {
-    border-color: var(--line-hover);
-    background: var(--ink-2);
   }
 
   .agent-icon {
@@ -100,6 +91,7 @@ const agents = [
   @media (max-width: 640px) {
     .agents { padding-block: 20px 16px; padding-inline: 16px; }
     .agents-inner { gap: 16px; }
-    .agent-tile { padding: 11px 14px; font-size: 0.82rem; gap: 10px; }
+    .agents-list { gap: 20px; }
+    .agent-tile { font-size: 0.82rem; gap: 8px; }
   }
 </style>
