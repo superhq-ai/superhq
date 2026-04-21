@@ -149,6 +149,27 @@ kbd {
   padding-inline: 24px;
 }
 
+/* ============================================================
+   # frame — fixed vertical rules at container boundaries.
+   Combined with the header's border-bottom and footer's
+   border-top, they form the four strokes of a "#" layout.
+   ============================================================ */
+.frame-line {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-strong);
+  z-index: 60;
+  pointer-events: none;
+}
+.frame-line-left  { left:  max(12px, calc(50% - var(--maxw) / 2)); }
+.frame-line-right { right: max(12px, calc(50% - var(--maxw) / 2)); }
+
+@media (max-width: 640px) {
+  .frame-line { display: none; }
+}
+
 .section {
   padding-block: 88px 0;
   position: relative;

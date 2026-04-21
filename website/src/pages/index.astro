@@ -1,24 +1,18 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import Banner from "../components/Banner.astro";
 import Header from "../components/Header.astro";
 import Hero from "../components/Hero.astro";
+import AgentRow from "../components/AgentRow.astro";
 import ScreenshotFrame from "../components/ScreenshotFrame.astro";
-import Features from "../components/Features.astro";
-import Agents from "../components/Agents.astro";
-import Shortcuts from "../components/Shortcuts.astro";
 import Footer from "../components/Footer.astro";
 ---
 
 <Layout>
-  <Banner />
   <Header />
   <main>
     <Hero />
+    <AgentRow />
     <ScreenshotFrame />
-    <Features />
-    <Agents />
-    <Shortcuts />
   </main>
   <Footer />
 </Layout>

@@ -1,44 +1,147 @@
 ---
-// Fixed top bar with a single star-on-github CTA on the right.
+import logoRaw from "../assets/logo.svg?raw";
+// h=22px → width scales from viewBox 717:461 → ~34px.
+const logo = logoRaw.replace(/<svg\b([^>]*)>/, (_m, a) => `<svg${a} height="22" width="34">`);
+
+// Best-effort star count at build time. Short timeout, opt-out via env —
+// we never want a decorative number to slow the build or block offline dev.
+async function fetchStars(): Promise<string | null> {
+  if (process.env.SKIP_GITHUB_STARS === "1") return null;
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 1500);
+    const res = await fetch("https://api.github.com/repos/superhq-ai/superhq", {
+      signal: ctl.signal,
+      headers: { "User-Agent": "superhq-website", Accept: "application/vnd.github+json" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { stargazers_count?: number };
+    const n = data.stargazers_count;
+    if (typeof n !== "number") return null;
+    if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k";
+    return String(n);
+  } catch {
+    return null;
+  }
+}
+
+const stars = await fetchStars();
 ---
 
 <header class="site-header">
   <div class="header-inner">
-    <a class="pill-btn" href="https://github.com/superhq-ai/superhq" data-umami-event="github-star-click">
-      <svg class="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"></path>
-      </svg>
-      star on github
-    </a>
+    <a class="brand" href="/" aria-label="SuperHQ home" set:html={logo} />
+
+    <div class="header-ctas">
+      <a
+        class="pill-btn star-btn"
+        href="https://github.com/superhq-ai/superhq"
+        data-umami-event="header-star-click"
+        aria-label="Star superhq on GitHub"
+      >
+        <svg class="gh" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <span>Star</span>
+        {stars && (
+          <>
+            <span class="sep" aria-hidden="true"></span>
+            <svg class="star" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
+              <path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/>
+            </svg>
+            <span class="count">{stars}</span>
+          </>
+        )}
+      </a>
+
+      <a
+        class="pill-btn primary"
+        href="https://github.com/superhq-ai/superhq/releases"
+        data-umami-event="header-download-click"
+      >
+        <svg class="apple" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+        </svg>
+        Download for Mac
+      </a>
+    </div>
   </div>
 </header>
 
 <style>
   .site-header {
-    position: fixed;
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
     z-index: 50;
-    padding: 18px 32px;
-    pointer-events: none;
+    padding: 14px 32px;
+    background: rgba(13, 13, 18, 0.72);
+    backdrop-filter: saturate(160%) blur(10px);
+    -webkit-backdrop-filter: saturate(160%) blur(10px);
+    border-bottom: 1px solid var(--line-strong);
   }
 
   .header-inner {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: center;
-    max-width: 1200px;
+    max-width: var(--maxw);
     margin: 0 auto;
+    padding-inline: 20px;
   }
 
-  .header-inner .pill-btn {
-    pointer-events: auto;
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    color: var(--fg);
+    line-height: 0;
+  }
+  .brand :global(svg) {
+    display: block;
+    height: 22px;
+    width: auto;
+  }
+  .brand:hover { opacity: 0.85; }
+
+  .header-ctas {
+    display: flex;
+    align-items: center;
+    gap: 20px;
   }
 
-  @media (max-width: 720px) {
-    .site-header {
-      padding: 14px 20px;
-    }
+  .star-btn {
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.78rem;
+  }
+  .star-btn .sep {
+    width: 1px;
+    height: 14px;
+    background: var(--line-strong);
+    margin: 0 2px;
+  }
+  .star-btn .count {
+    color: var(--fg-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .star-btn .star { color: var(--fg-dim); }
+  .star-btn:hover .star { color: var(--fg); }
+
+  .site-header .pill-btn.primary {
+    padding: 9px 16px;
+    font-size: 0.8rem;
+  }
+
+  @media (max-width: 640px) {
+    .site-header { padding: 12px 18px; }
+    .header-ctas { gap: 10px; }
+    .star-btn span:not(.sep):not(.count) { display: none; }
+    .star-btn .sep { display: none; }
+    .star-btn { padding: 8px 10px; }
+  }
+  /* on narrow phones the Download pill alone is priority — drop the
+     star button so the header can't overflow horizontally. */
+  @media (max-width: 480px) {
+    .star-btn { display: none; }
   }
 </style>

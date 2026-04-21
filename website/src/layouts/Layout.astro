@@ -46,6 +46,8 @@ const ogImage = new URL("/og.png", Astro.site ?? "https://superhq.ai").toString(
     <script defer src="https://cloud.umami.is/script.js" data-website-id="fc2d864d-be2e-4dbe-a857-b7c2cddd6412"></script>
   </head>
   <body>
+    <div class="frame-line frame-line-left" aria-hidden="true"></div>
+    <div class="frame-line frame-line-right" aria-hidden="true"></div>
     <slot />
   </body>
 </html>

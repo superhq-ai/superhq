@@ -7051,7 +7051,7 @@ dependencies = [
 
 [[package]]
 name = "shuru-linux"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "crossbeam-channel",
  "kvm-bindings",
@@ -7107,7 +7107,7 @@ dependencies = [
 
 [[package]]
 name = "shuru-store"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "blake3",

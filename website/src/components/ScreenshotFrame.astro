@@ -1,39 +1,151 @@
+---
+// Pixelated-edge screenshot.
+//
+// The screenshot sits directly on the page background. Along every
+// edge, cells of `page-bg` color chew inward to produce a continuous
+// staircase silhouette. Every cell has a cut (no gaps); the depth
+// (1, 2, or 3 cells) varies deterministically so the outline reads as
+// intentional pixel art rather than random noise.
+//
+// Cell grid is 3:2 — the same aspect as the composite image — so
+// cells are perfect squares at every viewport size.
+
+const COLS = 36;
+const ROWS = 24;
+
+function mulberry32(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pickDepth(r: number): number {
+  if (r < 0.58) return 1;
+  if (r < 0.88) return 2;
+  return 3;
+}
+
+const rand = mulberry32(9);
+const top    = Array.from({ length: COLS }, () => pickDepth(rand()));
+const bottom = Array.from({ length: COLS }, () => pickDepth(rand()));
+const left   = Array.from({ length: ROWS }, () => pickDepth(rand()));
+const right  = Array.from({ length: ROWS }, () => pickDepth(rand()));
+---
+
 <section class="shot-section">
-  <div class="shot-wrap">
+  <div class="shot-wrap" style={`--cols:${COLS};--rows:${ROWS};`}>
     <img
+      class="shot"
       src="/screenshot.webp"
-      width="3104"
-      height="1808"
-      alt="SuperHQ desktop app showing sandboxed agents, terminal, and review panel"
+      width="2400"
+      height="1600"
+      alt="SuperHQ desktop app — sandboxed agents, terminal, review panel, on a ghibli-style mountain backdrop"
       loading="eager"
       decoding="async"
     />
+
+    {top.map((d, i) => <span class="px px-t" style={`--i:${i};--d:${d};`} aria-hidden="true"></span>)}
+    {bottom.map((d, i) => <span class="px px-b" style={`--i:${i};--d:${d};`} aria-hidden="true"></span>)}
+    {left.map((d, j) => <span class="px px-l" style={`--j:${j};--d:${d};`} aria-hidden="true"></span>)}
+    {right.map((d, j) => <span class="px px-r" style={`--j:${j};--d:${d};`} aria-hidden="true"></span>)}
+
+    <a
+      class="changelog-link"
+      href="https://github.com/superhq-ai/superhq/blob/main/CHANGELOG.md"
+      data-umami-event="changelog-link-click"
+    >
+      See what's new <span class="arrow">→</span>
+    </a>
   </div>
 </section>
 
 <style>
   .shot-section {
-    margin-top: 60px;
+    margin-top: 8px;
     padding-inline: 24px;
   }
 
   .shot-wrap {
+    position: relative;
     width: 100%;
     max-width: 1100px;
     margin-inline: auto;
+    aspect-ratio: 3 / 2;
   }
 
-  .shot-wrap img {
+  .shot {
     display: block;
     width: 100%;
-    max-width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
   }
 
+  /* pixel cuts — page-bg squares chewing inward from each edge */
+  .px {
+    position: absolute;
+    background: var(--ink-0);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .px-t {
+    top: 0;
+    left: calc(var(--i) * (100% / var(--cols)));
+    width: calc(100% / var(--cols));
+    height: calc(var(--d) * (100% / var(--rows)));
+  }
+  .px-b {
+    bottom: 0;
+    left: calc(var(--i) * (100% / var(--cols)));
+    width: calc(100% / var(--cols));
+    height: calc(var(--d) * (100% / var(--rows)));
+  }
+  .px-l {
+    left: 0;
+    top: calc(var(--j) * (100% / var(--rows)));
+    height: calc(100% / var(--rows));
+    width: calc(var(--d) * (100% / var(--cols)));
+  }
+  .px-r {
+    right: 0;
+    top: calc(var(--j) * (100% / var(--rows)));
+    height: calc(100% / var(--rows));
+    width: calc(var(--d) * (100% / var(--cols)));
+  }
+
+  /* changelog link — floats at the bottom-right, inside the frame */
+  .changelog-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    padding: 8px 14px;
+    border: 1px solid rgba(236, 234, 228, 0.2);
+    border-radius: var(--radius);
+    background: rgba(13, 13, 18, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--fg-dim);
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    z-index: 5;
+    transition: border-color 140ms ease, color 140ms ease;
+  }
+  .changelog-link:hover {
+    border-color: var(--line-hover);
+    color: var(--fg);
+    opacity: 1;
+  }
+  .changelog-link .arrow { transition: transform 160ms ease; }
+  .changelog-link:hover .arrow { transform: translateX(3px); }
+
   @media (max-width: 720px) {
-    .shot-section {
-      margin-top: 40px;
-      padding-inline: 16px;
-    }
+    .shot-section { padding-inline: 16px; }
+    .changelog-link { right: 10px; bottom: 10px; font-size: 0.7rem; padding: 6px 10px; }
   }
 </style>
