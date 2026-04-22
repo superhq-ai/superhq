@@ -114,17 +114,23 @@ pub struct ThemeEntry {
 }
 
 const THEME_SOURCES: &[(&str, &str)] = &[
-    ("superhq-dark",  include_str!("../../assets/themes/superhq-dark.json")),
-    ("superhq-light", include_str!("../../assets/themes/superhq-light.json")),
-    ("washi",         include_str!("../../assets/themes/washi.json")),
-    ("sumi",          include_str!("../../assets/themes/sumi.json")),
+    ("superhq-dark",         include_str!("../../assets/themes/superhq-dark.json")),
+    ("superhq-light",        include_str!("../../assets/themes/superhq-light.json")),
+    ("washi",                include_str!("../../assets/themes/washi.json")),
+    ("sumi",                 include_str!("../../assets/themes/sumi.json")),
+    ("catppuccin-mocha",     include_str!("../../assets/themes/catppuccin-mocha.json")),
+    ("catppuccin-macchiato", include_str!("../../assets/themes/catppuccin-macchiato.json")),
+    ("catppuccin-latte",     include_str!("../../assets/themes/catppuccin-latte.json")),
 ];
 
 pub const THEMES: &[ThemeEntry] = &[
-    ThemeEntry { id: "superhq-light", label: "Light" },
-    ThemeEntry { id: "superhq-dark",  label: "Dark"  },
-    ThemeEntry { id: "washi",         label: "Washi" },
-    ThemeEntry { id: "sumi",          label: "Sumi"  },
+    ThemeEntry { id: "superhq-light",        label: "Light"               },
+    ThemeEntry { id: "superhq-dark",         label: "Dark"                },
+    ThemeEntry { id: "washi",                label: "Washi"               },
+    ThemeEntry { id: "sumi",                 label: "Sumi"                },
+    ThemeEntry { id: "catppuccin-mocha",     label: "Catppuccin Mocha"    },
+    ThemeEntry { id: "catppuccin-macchiato", label: "Catppuccin Macchiato"},
+    ThemeEntry { id: "catppuccin-latte",     label: "Catppuccin Latte"    },
 ];
 
 /// Reserved ID for "follow the system light/dark setting".
@@ -375,4 +381,35 @@ pub fn rgb_bytes(color: Rgba) -> (u8, u8, u8) {
         (color.g * 255.0) as u8,
         (color.b * 255.0) as u8,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catppuccin_mocha_parses() {
+        assert!(parse_theme("catppuccin-mocha").is_some(),
+            "catppuccin-mocha.json failed to parse");
+    }
+
+    #[test]
+    fn catppuccin_macchiato_parses() {
+        assert!(parse_theme("catppuccin-macchiato").is_some(),
+            "catppuccin-macchiato.json failed to parse");
+    }
+
+    #[test]
+    fn catppuccin_latte_parses() {
+        assert!(parse_theme("catppuccin-latte").is_some(),
+            "catppuccin-latte.json failed to parse");
+    }
+
+    #[test]
+    fn catppuccin_themes_in_catalog() {
+        let ids: Vec<&str> = THEMES.iter().map(|t| t.id).collect();
+        assert!(ids.contains(&"catppuccin-mocha"));
+        assert!(ids.contains(&"catppuccin-macchiato"));
+        assert!(ids.contains(&"catppuccin-latte"));
+    }
 }

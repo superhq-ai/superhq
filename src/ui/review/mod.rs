@@ -4,6 +4,7 @@ mod diff_service;
 mod diff_view;
 mod file_row;
 mod highlighter;
+pub use self::highlighter::load_syntax_theme;
 mod watcher;
 
 pub use changes_tab::ChangesTab;

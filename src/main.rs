@@ -1292,6 +1292,7 @@ fn main() -> Result<()> {
             .unwrap_or_else(|| "superhq-dark".into());
         let resolved = ui::theme::resolve_theme_id(&saved_theme, cx.window_appearance());
         ui::theme::load_theme(resolved);
+        ui::review::load_syntax_theme(resolved);
 
         ui::components::actions::bind_keys(cx);
         ui::components::text_input::bind_keys(cx);
@@ -1371,6 +1372,7 @@ fn main() -> Result<()> {
                         let resolved =
                             ui::theme::resolve_theme_id(&saved, window.appearance());
                         if ui::theme::load_theme(resolved) {
+                            ui::review::load_syntax_theme(resolved);
                             cx.refresh_windows();
                         }
                     })
