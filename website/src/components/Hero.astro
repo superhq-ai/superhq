@@ -69,6 +69,17 @@
           </svg>
         </span>
       </button>
+
+      <p class="install-note">
+        Note: the app is not yet notarized, so macOS Gatekeeper will block
+        it on first launch.{" "}
+        <a
+          href="https://github.com/superhq-ai/superhq#install"
+          target="_blank"
+          rel="noreferrer"
+          data-umami-event="install-note-readme-click"
+        >See the README</a> for the one-time unblock step.
+      </p>
     </div>
   </div>
 </section>
@@ -223,6 +234,26 @@
     transform: scale(1);
   }
   .brew-line:hover .copy-icon { opacity: 1; }
+
+  .install-note {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.5;
+    color: var(--fg-dimmer);
+    max-width: 46ch;
+    margin: -6px 0 0;
+  }
+  .install-note a {
+    color: var(--fg-dim);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 2px;
+    transition: color 140ms ease, text-decoration-color 140ms ease;
+  }
+  .install-note a:hover {
+    color: var(--fg);
+    text-decoration-color: var(--fg);
+  }
 
   @media (max-width: 960px) {
     .hero-inner {
