@@ -1,57 +1,80 @@
 use gpui::{HighlightStyle, Rgba};
 use std::collections::{BTreeSet, HashMap};
 use std::ops::Range;
-use std::sync::LazyLock;
+use std::sync::{Arc, RwLock};
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
 use tree_sitter_language::LanguageFn;
 
-// ── Syntax theme (loaded from JSON) ────────────────────────────
+// ── Syntax theme (dynamic, mirrors UI theme registry) ─────────
 
-/// Maps tree-sitter capture names to colors.
-/// Loaded once from the embedded JSON file.
-static SYNTAX_THEME: LazyLock<HashMap<String, HighlightStyle>> = LazyLock::new(|| {
+static SYNTAX_THEME: RwLock<Option<Arc<HashMap<String, HighlightStyle>>>> = RwLock::new(None);
+
+fn syntax_theme_json(id: &str) -> &'static str {
+    match id {
+        "catppuccin-mocha"     => include_str!("../../../assets/themes/catppuccin-mocha-syntax.json"),
+        "catppuccin-macchiato" => include_str!("../../../assets/themes/catppuccin-macchiato-syntax.json"),
+        "catppuccin-latte"     => include_str!("../../../assets/themes/catppuccin-latte-syntax.json"),
+        _                      => include_str!("../../../assets/themes/superhq-dark-syntax.json"),
+    }
+}
+
+fn build_syntax_map(src: &str) -> HashMap<String, HighlightStyle> {
     let raw: HashMap<String, String> =
-        serde_json::from_str(include_str!("../../../assets/themes/superhq-dark-syntax.json"))
-            .expect("Failed to parse syntax theme (superhq-dark-syntax.json)");
-
+        serde_json::from_str(src).expect("syntax theme JSON parse failed");
     raw.into_iter()
         .filter_map(|(name, hex)| {
             let color = parse_hex(&hex)?;
-            Some((
-                name,
-                HighlightStyle {
-                    color: Some(color.into()),
-                    ..Default::default()
-                },
-            ))
+            Some((name, HighlightStyle { color: Some(color.into()), ..Default::default() }))
         })
         .collect()
-});
+}
+
+pub fn load_syntax_theme(id: &str) {
+    let map = build_syntax_map(syntax_theme_json(id));
+    *SYNTAX_THEME.write().unwrap() = Some(Arc::new(map));
+}
+
+fn current_syntax_theme() -> Arc<HashMap<String, HighlightStyle>> {
+    if let Some(t) = SYNTAX_THEME.read().unwrap().clone() {
+        return t;
+    }
+    let map = build_syntax_map(syntax_theme_json("superhq-dark"));
+    let arc = Arc::new(map);
+    *SYNTAX_THEME.write().unwrap() = Some(arc.clone());
+    arc
+}
 
 fn parse_hex(hex: &str) -> Option<Rgba> {
     let hex = hex.trim_start_matches('#');
-    if hex.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    let (r, g, b, a) = match hex.len() {
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            (r, g, b, 255u8)
+        }
+        8 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            (r, g, b, a)
+        }
+        _ => return None,
+    };
     Some(Rgba {
         r: r as f32 / 255.0,
         g: g as f32 / 255.0,
         b: b as f32 / 255.0,
-        a: 1.0,
+        a: a as f32 / 255.0,
     })
 }
 
 fn style_for_capture(name: &str) -> Option<HighlightStyle> {
-    // Try exact match first, then progressively strip suffixes.
-    // e.g. "keyword.function" → "keyword.function", then "keyword"
-    let theme = &*SYNTAX_THEME;
+    let theme = current_syntax_theme();
     if let Some(style) = theme.get(name) {
         return Some(*style);
     }
-    // Walk up the capture hierarchy
     let mut key = name;
     while let Some(dot) = key.rfind('.') {
         key = &key[..dot];
@@ -186,4 +209,66 @@ fn merge_styles(
     }
 
     merged
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mocha_syntax_json_is_valid() {
+        let src = syntax_theme_json("catppuccin-mocha");
+        let result: Result<std::collections::HashMap<String, String>, _> =
+            serde_json::from_str(src);
+        assert!(result.is_ok(), "catppuccin-mocha-syntax.json parse error: {:?}", result.err());
+        let map = result.unwrap();
+        assert!(map.contains_key("keyword"), "missing 'keyword' key");
+        assert!(map.contains_key("string"),  "missing 'string' key");
+        assert!(map.contains_key("function"),"missing 'function' key");
+    }
+
+    #[test]
+    fn macchiato_syntax_json_is_valid() {
+        let src = syntax_theme_json("catppuccin-macchiato");
+        let result: Result<std::collections::HashMap<String, String>, _> =
+            serde_json::from_str(src);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert!(map.contains_key("keyword"));
+    }
+
+    #[test]
+    fn latte_syntax_json_is_valid() {
+        let src = syntax_theme_json("catppuccin-latte");
+        let result: Result<std::collections::HashMap<String, String>, _> =
+            serde_json::from_str(src);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert!(map.contains_key("keyword"));
+    }
+
+    #[test]
+    fn unknown_id_falls_back_to_dark_syntax() {
+        let src = syntax_theme_json("nonexistent");
+        // should be superhq-dark-syntax.json content — verify it parses
+        let result: Result<std::collections::HashMap<String, String>, _> =
+            serde_json::from_str(src);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_hex_handles_six_char() {
+        let color = parse_hex("#cba6f7").unwrap();
+        assert!((color.r - 0xcb as f32 / 255.0).abs() < 0.01);
+        assert!((color.g - 0xa6 as f32 / 255.0).abs() < 0.01);
+        assert!((color.b - 0xf7 as f32 / 255.0).abs() < 0.01);
+        assert!((color.a - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn parse_hex_handles_eight_char() {
+        let color = parse_hex("#cba6f780").unwrap();
+        assert!((color.r - 0xcb as f32 / 255.0).abs() < 0.01);
+        assert!((color.a - 0x80 as f32 / 255.0).abs() < 0.01);
+    }
 }

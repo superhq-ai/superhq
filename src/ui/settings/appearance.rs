@@ -1,6 +1,7 @@
 use gpui::*;
 use super::SettingsPanel;
 use super::card::section_header;
+use crate::ui::review::load_syntax_theme;
 use crate::ui::theme::{self as t, PreviewPalette, THEMES, AUTO_THEME};
 
 const CARD_W: f32 = 116.0;
@@ -212,6 +213,7 @@ impl SettingsPanel {
 
         let resolved = t::resolve_theme_id(id, cx.window_appearance());
         t::load_theme(resolved);
+        load_syntax_theme(resolved);
         cx.refresh_windows();
         cx.notify();
     }
