@@ -1,10 +1,9 @@
 ---
 import logoRaw from "../assets/logo.svg?raw";
-// h=22px → width scales from viewBox 717:461 → ~34px.
 const logo = logoRaw.replace(/<svg\b([^>]*)>/, (_m, a) => `<svg${a} height="22" width="34">`);
 
-// Best-effort star count at build time. Short timeout, opt-out via env —
-// we never want a decorative number to slow the build or block offline dev.
+// Short timeout + env opt-out so a decorative number never blocks the
+// build or offline dev when GitHub is slow or unreachable.
 async function fetchStars(): Promise<string | null> {
   if (process.env.SKIP_GITHUB_STARS === "1") return null;
   try {
@@ -73,7 +72,7 @@ const stars = await fetchStars();
   .site-header {
     position: sticky;
     top: 0;
-    z-index: 50;
+    z-index: 80;
     padding: 14px 32px;
     background: rgba(13, 13, 18, 0.72);
     backdrop-filter: saturate(160%) blur(10px);
@@ -139,8 +138,8 @@ const stars = await fetchStars();
     .star-btn .sep { display: none; }
     .star-btn { padding: 8px 10px; }
   }
-  /* on narrow phones the Download pill alone is priority — drop the
-     star button so the header can't overflow horizontally. */
+  /* at phone widths the Download pill is the priority; hide the
+     star button so the header cannot overflow horizontally. */
   @media (max-width: 480px) {
     .star-btn { display: none; }
   }

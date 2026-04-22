@@ -1,0 +1,190 @@
+---
+---
+
+<section class="remote">
+  <div class="container remote-inner">
+    <div class="remote-art" aria-hidden="true">
+      <img
+        class="earth"
+        src="/earth.webp"
+        width="1024"
+        height="1024"
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+      <img
+        class="astronaut"
+        src="/astronaut.webp"
+        width="1536"
+        height="1024"
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+
+    <div class="remote-copy">
+      <span class="eyebrow">Remote control</span>
+
+      <h2 class="headline">Check in on your agents<br />from anywhere.</h2>
+
+      <p class="lede">
+        Scan the pairing QR on your Mac, open remote.superhq.ai on your
+        phone, and every workspace travels with you. Review diffs, reply
+        to agents, run commands. All from mobile.
+      </p>
+
+      <div class="cta-row">
+        <a
+          class="pill-btn primary"
+          href="https://remote.superhq.ai"
+          target="_blank"
+          rel="noreferrer"
+          data-umami-event="remote-section-cta-click"
+        >
+          Open remote.superhq.ai
+          <svg class="arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 8h8M8.5 4.5L12 8l-3.5 3.5"/>
+          </svg>
+        </a>
+        <a
+          class="pill-btn"
+          href="https://github.com/superhq-ai/superhq/blob/main/REMOTE.md"
+          data-umami-event="remote-docs-click"
+        >
+          How pairing works →
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .remote {
+    padding-block: 120px 160px;
+  }
+
+  .remote-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 40px;
+    align-items: center;
+  }
+
+  /* z-index: 70 lifts the illustration above the page's # frame
+     verticals (z-index: 60) so the earth draws over them. */
+  .remote-art {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    width: 100%;
+    overflow: visible;
+    z-index: 70;
+  }
+
+  .remote-art img {
+    position: absolute;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .remote-art .astronaut {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: auto;
+    z-index: 2;
+    filter: drop-shadow(0 30px 60px rgba(230, 180, 120, 0.08));
+    animation: astro-float 9s ease-in-out infinite alternate;
+    transform-origin: 60% 45%;
+    will-change: transform;
+  }
+
+  @keyframes astro-float {
+    0%   { transform: translate(0, 0)       rotate(0deg); }
+    50%  { transform: translate(-3px, -8px) rotate(-0.6deg); }
+    100% { transform: translate(2px, -14px) rotate(0.5deg); }
+  }
+
+  .remote-art .earth {
+    position: absolute;
+    bottom: -45%;
+    left: -40%;
+    width: 150%;
+    aspect-ratio: 1 / 1;
+    z-index: 1;
+    animation: earth-drift 28s ease-in-out infinite alternate;
+  }
+
+  @keyframes earth-drift {
+    0%   { transform: translate(0, 0) rotate(0deg); }
+    100% { transform: translate(-10px, -4px) rotate(-1.2deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .remote-art .earth,
+    .remote-art .astronaut { animation: none; }
+  }
+
+  .remote-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    min-width: 0;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-dimmer);
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--ink-1);
+  }
+
+  .headline {
+    font-size: clamp(1.7rem, 3.4vw, 2.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    margin: 0;
+  }
+
+  .lede {
+    font-family: var(--sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--fg-dim);
+    max-width: 48ch;
+    margin: 0;
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  @media (max-width: 960px) {
+    .remote {
+      padding-block: 80px 140px;
+    }
+    .remote-inner {
+      grid-template-columns: 1fr;
+      gap: 140px;
+    }
+    .remote-art {
+      max-width: 560px;
+      margin-inline: auto;
+    }
+    .remote-art .earth {
+      width: 115%;
+      left: -18%;
+      bottom: -35%;
+    }
+  }
+</style>

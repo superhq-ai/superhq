@@ -1,15 +1,4 @@
 ---
-// Pixelated-edge screenshot.
-//
-// The screenshot sits directly on the page background. Along every
-// edge, cells of `page-bg` color chew inward to produce a continuous
-// staircase silhouette. Every cell has a cut (no gaps); the depth
-// (1, 2, or 3 cells) varies deterministically so the outline reads as
-// intentional pixel art rather than random noise.
-//
-// Cell grid is 3:2 — the same aspect as the composite image — so
-// cells are perfect squares at every viewport size.
-
 const COLS = 36;
 const ROWS = 24;
 
@@ -84,7 +73,6 @@ const right  = Array.from({ length: ROWS }, () => pickDepth(rand()));
     object-fit: cover;
   }
 
-  /* pixel cuts — page-bg squares chewing inward from each edge */
   .px {
     position: absolute;
     background: var(--ink-0);
@@ -116,7 +104,6 @@ const right  = Array.from({ length: ROWS }, () => pickDepth(rand()));
     width: calc(var(--d) * (100% / var(--cols)));
   }
 
-  /* changelog link — floats at the bottom-right, inside the frame */
   .changelog-link {
     display: inline-flex;
     align-items: center;

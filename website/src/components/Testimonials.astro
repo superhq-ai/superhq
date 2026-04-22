@@ -1,0 +1,180 @@
+---
+type Testimonial = {
+  quote: string;
+  name: string;
+  handle?: string;
+  role: string;
+  url?: string;
+};
+
+const testimonials: Testimonial[] = [
+  {
+    quote: "this looks amazing",
+    name: "Homan P.",
+    handle: "@pelaseyed",
+    role: "Building Superagent.ai",
+    url: "https://x.com/pelaseyed",
+  },
+  {
+    quote:
+      "MicroVM + tmpfs overlay + diff approval is the right default for running coding agents on real repos. Would be great to also log tool calls and network egress per run for audit.",
+    name: "Brian Cheong",
+    role: "Founder, Dunialabs.io",
+  },
+  {
+    quote:
+      "the overlay tmpfs approach is clever. keeps the workspace clean while agents go wild.",
+    name: "Jongmin Park",
+    handle: "@paakjong",
+    role: "Founder, Voyager.fm",
+    url: "https://x.com/paakjong",
+  },
+  {
+    quote: "this is fire",
+    name: "Advait Paliwal",
+    handle: "@advaitpaliwal",
+    role: "Companion.ai",
+    url: "https://x.com/advaitpaliwal",
+  },
+];
+---
+
+<section class="testimonials">
+  <div class="container testimonials-inner">
+    <div class="testimonials-head">
+      <span class="eyebrow">From the community</span>
+      <h2 class="headline">Developers like it.</h2>
+    </div>
+
+    <ul class="testimonials-grid">
+      {testimonials.map((t) => (
+        <li class="quote-card">
+          <blockquote class="quote-text">"{t.quote}"</blockquote>
+          <div class="quote-meta">
+            {t.url ? (
+              <a class="quote-name" href={t.url} target="_blank" rel="noreferrer" data-umami-event="testimonial-click">
+                {t.name}
+                {t.handle && <span class="quote-handle">{t.handle}</span>}
+              </a>
+            ) : (
+              <span class="quote-name">{t.name}</span>
+            )}
+            <span class="quote-role">{t.role}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .testimonials {
+    padding-block: 40px 80px;
+  }
+
+  .testimonials-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+
+  .testimonials-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-dimmer);
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--ink-1);
+  }
+
+  .headline {
+    font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin: 0;
+    color: var(--fg);
+  }
+
+  .testimonials-grid {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .testimonials-grid li { list-style: none; }
+
+  .quote-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 220px;
+    padding: 24px 26px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--ink-1);
+    transition: border-color 160ms ease, background 160ms ease;
+  }
+  .quote-card:hover {
+    border-color: var(--line-hover);
+    background: var(--ink-2);
+  }
+
+  .quote-text {
+    font-family: var(--mono);
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--fg);
+    margin: 0;
+    letter-spacing: -0.005em;
+  }
+
+  .quote-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: var(--mono);
+  }
+
+  .quote-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.86rem;
+    color: var(--fg);
+    font-weight: 500;
+  }
+  a.quote-name:hover { color: var(--fg); opacity: 0.85; }
+
+  .quote-handle {
+    color: var(--fg-dimmer);
+    font-size: 0.78rem;
+    font-weight: 400;
+  }
+
+  .quote-role {
+    color: var(--fg-dim);
+    font-size: 0.76rem;
+    letter-spacing: 0.01em;
+  }
+
+  @media (max-width: 720px) {
+    .testimonials { padding-block: 32px 56px; }
+    .testimonials-grid {
+      grid-template-columns: 1fr;
+    }
+    .quote-card { min-height: 0; padding: 20px 22px; }
+  }
+</style>

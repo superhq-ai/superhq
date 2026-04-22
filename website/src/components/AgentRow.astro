@@ -3,8 +3,6 @@ import claudeRaw from "../assets/claude.svg?raw";
 import codexRaw from "../assets/codex.svg?raw";
 import piRaw from "../assets/pi.svg?raw";
 
-// Force explicit dimensions and currentColor inheritance on the svg
-// root so the icons render at 26px and pick up the tile's color.
 function prep(raw: string, size = 26): string {
   return raw.replace(
     /<svg\b([^>]*)>/,
@@ -40,8 +38,8 @@ const agents = [
     padding-inline: 24px;
   }
 
-  /* width matches the screenshot's shot-wrap so the label's "R"
-     aligns with the bg image's left edge */
+  /* width matches ScreenshotFrame .shot-wrap so the label aligns
+     with the bg image's left edge. */
   .agents-inner {
     max-width: 1100px;
     margin-inline: auto;

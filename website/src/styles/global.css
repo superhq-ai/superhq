@@ -150,9 +150,9 @@ kbd {
 }
 
 /* ============================================================
-   # frame — fixed vertical rules at container boundaries.
-   Combined with the header's border-bottom and footer's
-   border-top, they form the four strokes of a "#" layout.
+   # frame: fixed vertical rules at container boundaries.
+   Combined with the header border-bottom and footer border-top,
+   they form the four strokes of a "#" layout.
    ============================================================ */
 .frame-line {
   position: fixed;

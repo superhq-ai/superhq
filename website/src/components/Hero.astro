@@ -1,7 +1,4 @@
 ---
-// Split two-column hero, inspired by conductor.build.
-// Left: announcement pill + macOS eyebrow + oversized headline.
-// Right: lede + CTA row + quiet brew one-liner.
 ---
 
 <section class="hero">
@@ -89,7 +86,6 @@
     align-items: start;
   }
 
-  /* left column */
   .hero-left {
     display: flex;
     flex-direction: column;
@@ -153,7 +149,6 @@
     letter-spacing: -0.04em;
   }
 
-  /* right column */
   .hero-right {
     display: flex;
     flex-direction: column;
@@ -177,7 +172,6 @@
     gap: 10px;
   }
 
-  /* brew one-liner — quiet, copyable */
   .brew-line {
     display: inline-flex;
     align-items: center;
@@ -230,7 +224,6 @@
   }
   .brew-line:hover .copy-icon { opacity: 1; }
 
-  /* responsive */
   @media (max-width: 960px) {
     .hero-inner {
       grid-template-columns: 1fr;
@@ -259,8 +252,6 @@
       btn.classList.add("copied");
       if (resetTimer) clearTimeout(resetTimer);
       resetTimer = setTimeout(() => btn.classList.remove("copied"), 1600);
-    } catch {
-      /* noop */
-    }
+    } catch {}
   });
 </script>
