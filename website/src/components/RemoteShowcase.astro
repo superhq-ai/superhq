@@ -1,0 +1,192 @@
+---
+const phones = [
+  {
+    src: "/images/remote-onboarding.jpeg",
+    alt: "Pairing screen on remote.superhq.ai, scan the QR shown on your Mac",
+    label: "01 / Pair",
+    caption: "Scan the QR once. Your phone is now a remote for your Mac.",
+  },
+  {
+    src: "/images/remote-workspaces.jpeg",
+    alt: "Workspace list on remote.superhq.ai",
+    label: "02 / Workspaces",
+    caption: "Every sandbox you've opened, one tap away from wherever you are.",
+  },
+  {
+    src: "/images/remote-agent.jpeg",
+    alt: "A coding agent running live inside a SuperHQ workspace, viewed from mobile",
+    label: "03 / Live",
+    caption: "Stream agent output, reply, approve diffs. All from your pocket.",
+  },
+];
+---
+
+<section class="showcase">
+  <div class="container showcase-inner">
+    <div class="showcase-head">
+      <span class="eyebrow">On your phone</span>
+      <h2 class="headline">Everything you need</h2>
+      <p class="lede">
+        No app store, no install. Open the URL on any phone and your
+        Mac's workspaces show up. Pair once, stay signed in.
+      </p>
+    </div>
+
+    <ul class="phones-row">
+      {phones.map((p) => (
+        <li class="phone-card">
+          <div class="phone">
+            <img
+              class="phone-frame"
+              src="/images/iphone-frame.svg"
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+              decoding="async"
+            />
+            <img
+              class="phone-screen"
+              src={p.src}
+              alt={p.alt}
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="phone-meta">
+            <span class="phone-label">{p.label}</span>
+            <p class="phone-caption">{p.caption}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .showcase {
+    padding-block: 40px 100px;
+  }
+
+  .showcase-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  .showcase-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--fg-dimmer);
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--ink-1);
+  }
+
+  .headline {
+    font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin: 0;
+    color: var(--fg);
+  }
+
+  .lede {
+    font-family: var(--sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--fg-dim);
+    max-width: 52ch;
+    margin: 0;
+  }
+
+  .phones-row {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 40px;
+    width: 100%;
+    max-width: 900px;
+    margin-inline: auto;
+  }
+  .phones-row li { list-style: none; }
+
+  .phone-card {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .phone {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 72.5 / 150;
+    filter: drop-shadow(0 26px 48px rgba(0, 0, 0, 0.55));
+  }
+
+  .phone-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Screen sits on top of the frame (frame's screen fill is opaque).
+     Inset values map to the SVG's inner screen rect
+     (x=2.91mm, y=2.46mm in a 72.5x150 viewBox). */
+  .phone-screen {
+    position: absolute;
+    top: 1.64%;
+    left: 4.01%;
+    width: 91.97%;
+    height: 96.72%;
+    object-fit: cover;
+    border-radius: 15.6% / 7.17%;
+    background: #0d0d12;
+    z-index: 2;
+  }
+
+  .phone-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .phone-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-dimmer);
+  }
+
+  .phone-caption {
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--fg-dim);
+    margin: 0;
+  }
+
+  @media (max-width: 860px) {
+    .phones-row {
+      grid-template-columns: 1fr;
+      gap: 48px;
+      max-width: 320px;
+    }
+    .phone-card { gap: 16px; }
+  }
+</style>
