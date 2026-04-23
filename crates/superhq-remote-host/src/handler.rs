@@ -144,6 +144,16 @@ pub trait RemoteHandler: Send + Sync + 'static {
         let _ = (method, ok, device_id);
     }
 
+    /// Whether `device_id` is still a paired, authorized device. Called
+    /// before every post-auth RPC and every data-stream init so a session
+    /// that authenticated earlier can be neutralized the moment its
+    /// device is revoked. Default impl returns `true`, matching the
+    /// existing "auth at hello, trust forever" behavior.
+    async fn is_device_authorized(&self, device_id: &str) -> bool {
+        let _ = device_id;
+        true
+    }
+
     /// Called once per connection after `session.hello` succeeds.
     /// Returns a broadcast receiver the session's control-stream
     /// writer will drain, forwarding each message verbatim as a

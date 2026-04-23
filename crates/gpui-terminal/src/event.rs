@@ -44,7 +44,9 @@
 //! [`EventListener`]: alacritty_terminal::event::EventListener
 
 use alacritty_terminal::event::{Event, EventListener};
+use alacritty_terminal::vte::ansi::Rgb;
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 /// Events emitted by the terminal that the GPUI application cares about.
 ///
@@ -71,6 +73,11 @@ pub enum TerminalEvent {
     /// The terminal needs to write data back to the PTY (responses to queries
     /// like cursor position, device attributes, etc.).
     PtyWrite(String),
+
+    /// OSC 4/10/11/12 color query. `index` is the palette slot
+    /// (0-255 for OSC 4, 256 = fg, 257 = bg, 258 = cursor). The formatter
+    /// wraps an `Rgb` in the correct OSC response the app expects.
+    ColorRequest(usize, Arc<dyn Fn(Rgb) -> String + Send + Sync>),
 
     /// The terminal process has exited.
     Exit,
@@ -154,8 +161,8 @@ impl EventListener for GpuiEventProxy {
                 // TUI apps like Gemini CLI block waiting for these responses.
                 self.send(TerminalEvent::PtyWrite(data));
             }
-            Event::ColorRequest(ref _index, ref _format) => {
-                // Color requests are not commonly used
+            Event::ColorRequest(index, format) => {
+                self.send(TerminalEvent::ColorRequest(index, format));
             }
             Event::TextAreaSizeRequest(ref _format) => {
                 // Text area size requests are handled internally

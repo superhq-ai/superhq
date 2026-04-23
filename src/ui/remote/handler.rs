@@ -492,6 +492,10 @@ impl RemoteHandler for AppHandler {
         self.audit.log(method, ok, device_id.as_deref());
     }
 
+    async fn is_device_authorized(&self, device_id: &str) -> bool {
+        self.pairings.get(device_id).is_some()
+    }
+
     fn subscribe_notifications(
         &self,
     ) -> Option<tokio::sync::broadcast::Receiver<Arc<String>>> {

@@ -285,6 +285,7 @@ impl AppView {
             device_label: req.device_label,
             response: response.clone(),
         });
+        self.remote_popover_state.open.set(false);
         cx.notify();
 
         // Watchdog: the client may cancel the pairing (close its iroh

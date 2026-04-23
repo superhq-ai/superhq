@@ -60,6 +60,7 @@
 //! );
 //! ```
 
+use crate::block_elements;
 use crate::box_drawing;
 use crate::colors::ColorPalette;
 use crate::event::GpuiEventProxy;
@@ -667,14 +668,30 @@ impl TerminalRenderer {
                     }
                     continue;
                 }
+
+                if block_elements::is_block_element(ch) {
+                    let cell_bounds = Bounds {
+                        origin: Point { x, y: y_base },
+                        size: Size {
+                            width: self.cell_width,
+                            height: self.cell_height,
+                        },
+                    };
+                    block_elements::draw_block_element(ch, cell_bounds, fg_color, window);
+                    continue;
+                }
             }
 
             // Third pass: draw regular text characters
             for (col_idx, cell) in cells_vec.iter() {
                 let ch = cell.c;
 
-                // Skip empty cells and box-drawing (already handled)
-                if ch == ' ' || ch == '\0' || box_drawing::is_box_drawing_char(ch) {
+                // Skip empty cells and box/block glyphs (already handled)
+                if ch == ' '
+                    || ch == '\0'
+                    || box_drawing::is_box_drawing_char(ch)
+                    || block_elements::is_block_element(ch)
+                {
                     continue;
                 }
 
@@ -778,16 +795,19 @@ impl TerminalRenderer {
             self.paint_selection(sel_range, display_offset, num_lines, num_cols, origin, window);
         }
 
-        // Paint cursor, only visible when not scrolled back
+        // Paint cursor. Its grid line is fixed; scrollback shifts its visual
+        // row by `display_offset`. Hide it only when that row falls outside
+        // the viewport, not the moment the user scrolls.
         use crate::terminal::CursorShape;
 
-        if display_offset != 0 {
-            return; // Cursor is off-screen when scrolled into history
+        let cursor_point = grid.cursor.point;
+        let visual_line = cursor_point.line.0 + display_offset;
+        if visual_line < 0 || visual_line >= num_lines as i32 {
+            return;
         }
 
-        let cursor_point = grid.cursor.point;
         let cursor_x = origin.x + self.cell_width * (cursor_point.column.0 as f32);
-        let cursor_y = origin.y + self.cell_height * (cursor_point.line.0 as f32);
+        let cursor_y = origin.y + self.cell_height * (visual_line as f32);
 
         let cursor_color = self.palette.resolve(
             Color::Named(alacritty_terminal::vte::ansi::NamedColor::Cursor),

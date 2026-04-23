@@ -52,6 +52,7 @@ use crate::event::{GpuiEventProxy, TerminalEvent};
 use crate::input::keystroke_to_bytes;
 use crate::render::TerminalRenderer;
 use crate::terminal::{InternalEvent, SelectionPhase, TerminalState};
+use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column as AlacColumn, Line as AlacLine, Point as AlacPoint};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::index::Side as AlacSide;
@@ -829,6 +830,25 @@ impl TerminalView {
         }
     }
 
+    /// Snap the viewport back to the live edge. Called on user input
+    /// (keystrokes, paste) so the prompt the user is typing into is always
+    /// visible, matching xterm's `scrollKey` / alacritty's default behavior.
+    /// Notifies so the repaint happens even when the PTY doesn't echo
+    /// (raw-mode apps, password prompts).
+    fn scroll_to_bottom_on_input(&self, cx: &mut Context<Self>) {
+        let changed = self.state.with_term_mut(|term| {
+            if term.grid().display_offset() != 0 {
+                term.scroll_display(Scroll::Bottom);
+                true
+            } else {
+                false
+            }
+        });
+        if changed {
+            cx.notify();
+        }
+    }
+
     /// Paste from clipboard into the PTY with bracketed paste support.
     fn paste_clipboard(&self, cx: &App) {
         if let Some(item) = cx.read_from_clipboard() {
@@ -877,13 +897,18 @@ impl TerminalView {
         // Handle Cmd/platform shortcuts
         if event.keystroke.modifiers.platform {
             match event.keystroke.key.as_str() {
-                "v" => { self.paste_clipboard(cx); return; }
+                "v" => {
+                    self.scroll_to_bottom_on_input(cx);
+                    self.paste_clipboard(cx);
+                    return;
+                }
                 "c" => { self.copy_selection(cx); return; }
                 _ => {}
             }
         }
 
         if let Some(bytes) = keystroke_to_bytes(&event.keystroke, self.state.mode()) {
+            self.scroll_to_bottom_on_input(cx);
             self.write_to_pty(&bytes);
         }
     }
@@ -1154,6 +1179,16 @@ impl TerminalView {
                     // device attributes, etc.). TUI apps block on these.
                     self.write_to_pty(data.as_bytes());
                 }
+                TerminalEvent::ColorRequest(index, format) => {
+                    let palette = self.renderer.palette.clone();
+                    let rgb = self.state.with_term(|term| {
+                        palette.resolve_index_rgb(index, term.colors())
+                    });
+                    if let Some(rgb) = rgb {
+                        let response = format(rgb);
+                        self.write_to_pty(response.as_bytes());
+                    }
+                }
                 TerminalEvent::Exit => {
                     if let Some(ref callback) = self.exit_callback {
                         callback(window, cx);
@@ -1303,6 +1338,7 @@ impl Render for TerminalView {
                 this.copy_selection(cx);
             }))
             .on_action(cx.listener(|this, _: &TermPaste, _window, cx| {
+                this.scroll_to_bottom_on_input(cx);
                 this.paste_clipboard(cx);
             }))
             .on_action(cx.listener(|this, _: &TermClear, _window, _cx| {

@@ -303,6 +303,19 @@ async fn dispatch_control_request<H: RemoteHandler>(
         return Response::error(id, err);
     }
 
+    if !pre_auth_ok {
+        if let Some(device) = session.device_id() {
+            if !handler.is_device_authorized(&device).await {
+                let err = RpcError::new(
+                    superhq_remote_proto::error_code::AUTH_INVALID,
+                    "device access has been revoked",
+                );
+                handler.audit_rpc(&method, false, Some(device)).await;
+                return Response::error(id, err);
+            }
+        }
+    }
+
     let result = match method.as_str() {
         methods::SESSION_CHALLENGE => {
             // Generate a fresh one-shot nonce and stash it on this
@@ -434,6 +447,23 @@ async fn drive_data_stream<H: RemoteHandler>(
         send.write_all(b"\n").await?;
         let _ = send.finish();
         return Ok(());
+    }
+
+    if let Some(device) = session.device_id() {
+        if !handler.is_device_authorized(&device).await {
+            let err = Response::error(
+                req.id,
+                RpcError::new(
+                    superhq_remote_proto::error_code::AUTH_INVALID,
+                    "device access has been revoked",
+                ),
+            );
+            let wire = encode_response(&err)?;
+            send.write_all(wire.as_bytes()).await?;
+            send.write_all(b"\n").await?;
+            let _ = send.finish();
+            return Ok(());
+        }
     }
 
     let init: StreamInit = serde_json::from_value(req.params.clone())

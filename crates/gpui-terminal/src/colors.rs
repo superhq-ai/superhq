@@ -390,6 +390,51 @@ impl ColorPalette {
     pub fn cursor(&self) -> Hsla {
         self.cursor
     }
+
+    /// Resolve an OSC color-query index (0-255 palette, 256 = fg, 257 = bg,
+    /// 258 = cursor) into an `Rgb`, honoring any OSC-SET override stored in
+    /// `colors` before falling back to the palette defaults. Returns `None`
+    /// for indices outside the known named slots.
+    pub fn resolve_index_rgb(&self, index: usize, colors: &Colors) -> Option<Rgb> {
+        if index < alacritty_terminal::term::color::COUNT {
+            if let Some(rgb) = colors[index] {
+                return Some(rgb);
+            }
+        }
+        let hsla = match index {
+            0..=15 => self.ansi_colors[index],
+            16..=255 => self.extended_colors[index],
+            256 => self.foreground,
+            257 => self.background,
+            258 => self.cursor,
+            _ => return None,
+        };
+        Some(hsla_to_rgb(hsla))
+    }
+}
+
+/// Inverse of [`rgb_to_hsla`]: converts GPUI's Hsla back to the alacritty
+/// `Rgb` triple. Alpha is dropped since OSC responses are opaque sRGB.
+pub fn hsla_to_rgb(hsla: Hsla) -> Rgb {
+    let h = (hsla.h.fract() + 1.0).fract() * 360.0;
+    let s = hsla.s.clamp(0.0, 1.0);
+    let l = hsla.l.clamp(0.0, 1.0);
+
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+
+    let (r1, g1, b1) = match h as u32 / 60 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+
+    let to_u8 = |v: f32| ((v + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+    Rgb { r: to_u8(r1), g: to_u8(g1), b: to_u8(b1) }
 }
 
 /// Converts an RGB color to GPUI's Hsla color format.
@@ -663,5 +708,57 @@ mod tests {
         };
         let hsla = palette.resolve(Color::Spec(rgb), &colors);
         assert_eq!(hsla.a, 1.0);
+    }
+
+    #[test]
+    fn hsla_to_rgb_round_trips_pure_colors() {
+        for rgb in [
+            Rgb { r: 0, g: 0, b: 0 },
+            Rgb { r: 255, g: 255, b: 255 },
+            Rgb { r: 255, g: 0, b: 0 },
+            Rgb { r: 0, g: 255, b: 0 },
+            Rgb { r: 0, g: 0, b: 255 },
+            Rgb { r: 128, g: 64, b: 192 },
+            Rgb { r: 0x1e, g: 0x1e, b: 0x1e },
+        ] {
+            let back = hsla_to_rgb(rgb_to_hsla(rgb));
+            // Allow ±1 tolerance from f32 rounding in either direction.
+            assert!(
+                (back.r as i32 - rgb.r as i32).abs() <= 1
+                    && (back.g as i32 - rgb.g as i32).abs() <= 1
+                    && (back.b as i32 - rgb.b as i32).abs() <= 1,
+                "round-trip drifted too far: {:?} -> {:?}",
+                rgb,
+                back,
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_index_rgb_prefers_osc_override() {
+        let palette = ColorPalette::new();
+        let mut colors = Colors::default();
+        let override_rgb = Rgb { r: 42, g: 84, b: 168 };
+        colors[257usize] = Some(override_rgb); // OSC 11 SET
+        assert_eq!(palette.resolve_index_rgb(257, &colors), Some(override_rgb));
+    }
+
+    #[test]
+    fn resolve_index_rgb_falls_back_to_palette() {
+        let palette = ColorPalette::new();
+        let colors = Colors::default();
+        // 257 = background, default palette has a non-null bg.
+        let got = palette.resolve_index_rgb(257, &colors).expect("bg resolvable");
+        let expected = hsla_to_rgb(palette.background);
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn resolve_index_rgb_unknown_returns_none() {
+        let palette = ColorPalette::new();
+        let colors = Colors::default();
+        // 260 (DimBlack) isn't in our default-slot match arms.
+        assert_eq!(palette.resolve_index_rgb(260, &colors), None);
+        assert_eq!(palette.resolve_index_rgb(9999, &colors), None);
     }
 }
