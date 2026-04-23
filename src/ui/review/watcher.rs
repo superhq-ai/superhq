@@ -405,4 +405,31 @@ mod tests {
             "repeat DELETE must not re-emit an update",
         );
     }
+
+    /// Regression for the `touch x && echo > x` bug: an Added file that
+    /// gets written to after creation must keep emitting update entries
+    /// (only repeat DELETEs are suppressed). Previously the downstream
+    /// tab silently dropped the second event; we must at minimum surface
+    /// it from the classifier.
+    #[tokio::test]
+    async fn repeat_modify_on_added_file_still_emits_update() {
+        let host = ScratchDir::new("repeat-add");
+        let mut cache = HashMap::new();
+        cache.insert(
+            "fresh.txt".to_string(),
+            ChangedFile { path: "fresh.txt".to_string(), status: FileStatus::Added },
+        );
+
+        let result = classify_changes(
+            dirty(&[("fresh.txt", shuru_proto::watch_kind::MODIFY)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        assert_eq!(
+            result.updated_files.get("fresh.txt").map(|f| f.status),
+            Some(FileStatus::Added),
+            "follow-up MODIFY on an Added file must surface so the UI can refresh",
+        );
+    }
 }

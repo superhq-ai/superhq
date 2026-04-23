@@ -34,6 +34,12 @@ pub struct FileRowView {
     expanded: Rc<Cell<bool>>,
     focus: FocusHandle,
     char_width_cache: Rc<Cell<Option<Pixels>>>,
+
+    /// Bumped on every cache purge. Async stat/diff/highlight tasks
+    /// capture the current value at spawn and only write back if it
+    /// still matches, so a stale task started before a newer event
+    /// can't finish last and overwrite fresher results.
+    generation: u64,
 }
 
 impl FileRowView {
@@ -65,6 +71,7 @@ impl FileRowView {
             expanded: Rc::new(Cell::new(false)),
             focus: cx.focus_handle(),
             char_width_cache: Rc::new(Cell::new(None)),
+            generation: 0,
         };
         row.kick_stats(cx);
         row
@@ -87,10 +94,27 @@ impl FileRowView {
         self.display_lines.as_ref()
     }
 
-    /// Called when the file's status changes upstream (e.g., Modified → Deleted).
-    /// Resets cached diff/stats so they're recomputed against the new state.
+    /// Called when the file's status changes upstream (e.g. Added to
+    /// Deleted). Full reset: cached diff/stats AND any partial-discard
+    /// staging the user had accumulated (selections keyed by the old
+    /// hunk layout are meaningless against the new status).
     pub fn update_status(&mut self, status: FileStatus, cx: &mut Context<Self>) {
         self.status = status;
+        self.staging.clear();
+        self.purge_cache();
+        self.kick_stats(cx);
+        if self.expanded.get() {
+            self.kick_diff(cx);
+        }
+        cx.notify();
+    }
+
+    /// Called when the file's content has changed but its status has
+    /// not (e.g. a second write on an Added file, or an editor save on
+    /// a Modified file). Re-reads stats/diff while preserving the
+    /// user's partial-discard selections so mid-triage work is not
+    /// silently wiped by a follow-up event.
+    pub fn refresh_content(&mut self, cx: &mut Context<Self>) {
         self.purge_cache();
         self.kick_stats(cx);
         if self.expanded.get() {
@@ -105,7 +129,15 @@ impl FileRowView {
         self.diff = None;
         self.display_lines = None;
         self.highlights = None;
-        self.staging.clear();
+        // Caller is responsible for clearing `staging` when a full
+        // reset is warranted — refresh_content deliberately keeps it.
+        self.stats_loading = false;
+        self.diffing = false;
+        self.highlighting = false;
+        // Invalidate any in-flight async work. Old tasks may still
+        // complete after we bump, but they'll drop their result at the
+        // generation check instead of overwriting fresher data.
+        self.generation = self.generation.wrapping_add(1);
     }
 
     fn kick_stats(&mut self, cx: &mut Context<Self>) {
@@ -115,11 +147,13 @@ impl FileRowView {
         let Some(svc) = self.service.clone() else { return };
         self.stats_loading = true;
         let path = self.path.clone();
+        let spawn_gen = self.generation;
         let handle = svc.spawn_result(move |s| async move { s.compute_stats(&path).await });
         cx.spawn(async move |this, cx| {
             let Ok((stats, is_binary)) = handle.await else { return };
             let _ = cx.update(|cx| {
                 this.update(cx, |row, cx| {
+                    if row.generation != spawn_gen { return; }
                     let empty = !is_binary && stats.additions == 0 && stats.deletions == 0;
                     // For Added/Deleted, existence is the change. Only drop
                     // Modified files that turn out to have no content diff.
@@ -143,12 +177,14 @@ impl FileRowView {
         let Some(svc) = self.service.clone() else { return };
         self.diffing = true;
         let path = self.path.clone();
+        let spawn_gen = self.generation;
         let handle = svc.spawn_result(move |s| async move { s.compute_diff(&path).await });
         cx.spawn(async move |this, cx| {
             let Ok(diff) = handle.await else { return };
             let lines = Arc::new(diff_view::collect_lines(&diff.hunks));
             let _ = cx.update(|cx| {
                 this.update(cx, |row, cx| {
+                    if row.generation != spawn_gen { return; }
                     if diff.is_empty() && row.status == FileStatus::Modified {
                         (row.callbacks.on_empty)(&row.path, cx);
                         return;
@@ -175,6 +211,7 @@ impl FileRowView {
         self.highlighting = true;
         let path = self.path.clone();
         let hunks = d.hunks.clone();
+        let spawn_gen = self.generation;
         cx.spawn(async move |this, cx| {
             let result = std::thread::spawn(move || {
                 diff_view::compute_highlights(&path, &hunks)
@@ -182,6 +219,7 @@ impl FileRowView {
             if let Some(cache) = result {
                 let _ = cx.update(|cx| {
                     this.update(cx, |row, cx| {
+                        if row.generation != spawn_gen { return; }
                         row.highlighting = false;
                         row.highlights = Some(Arc::new(cache));
                         cx.notify();

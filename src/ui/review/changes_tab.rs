@@ -38,7 +38,7 @@ pub struct ChangedFile {
     pub status: FileStatus,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FileStatus {
     Modified,
     Added,
@@ -84,58 +84,84 @@ impl ChangesTab {
     }
 
     pub fn apply_results(&mut self, result: DiffResult, cx: &mut Context<super::SidePanel>) {
-        // Lift suppression for any path the bridge has now reported on.
         for path in &result.dirty_paths {
             self.suppressed.remove(path);
         }
 
-        // Remove reverted files
         for path in &result.removed_paths {
             self.changed_files.retain(|f| f.path != *path);
             self.file_views.remove(path);
         }
 
         for (path, file) in result.updated_files {
-            if self.suppressed.contains(&path) { continue; }
-            if let Some(existing) = self.changed_files.iter_mut().find(|f| f.path == path) {
-                // Already confirmed. Only status changes need a view refresh.
-                let status_changed = existing.status != file.status;
-                *existing = file.clone();
-                if status_changed {
+            let existing_status = self
+                .changed_files
+                .iter()
+                .find(|f| f.path == path)
+                .map(|f| f.status);
+            let action = decide_row_action(
+                file.status,
+                existing_status,
+                self.suppressed.contains(&path),
+            );
+
+            match action {
+                RowAction::Skip => {}
+                RowAction::RefreshContent => {
+                    if let Some(existing) = self
+                        .changed_files
+                        .iter_mut()
+                        .find(|f| f.path == path)
+                    {
+                        *existing = file.clone();
+                    }
                     if let Some(view) = self.file_views.get(&path) {
                         view.update(cx, |row, cx| {
-                            row.update_status(file.status, cx);
+                            row.refresh_content(cx);
                         });
                     }
                 }
-            } else if file.status == FileStatus::Modified {
-                // New candidate -- confirm it has real content differences
-                // before making it visible. This prevents flicker for files
-                // that are identical on both sides (e.g. post-Keep).
-                // Only applies to Modified: for Added/Deleted, existence
-                // itself is the change even with empty content.
-                let Some(svc) = self.service.clone() else { continue };
-                let path_clone = path.clone();
-                let handle = svc.spawn_result(move |s| async move {
-                    s.compute_stats(&path_clone).await
-                });
-                cx.spawn(async move |this, cx| {
-                    let Ok((stats, is_binary)) = handle.await else { return };
-                    let empty = !is_binary && stats.additions == 0 && stats.deletions == 0;
-                    if empty { return; }
-                    let _ = cx.update(|cx| {
-                        this.update(cx, |panel, cx| {
-                            let tab = &mut panel.changes_tab;
-                            if tab.suppressed.contains(&file.path) { return; }
-                            if tab.changed_files.iter().any(|f| f.path == file.path) { return; }
-                            tab.changed_files.push(file);
-                            cx.notify();
-                        }).ok();
+                RowAction::RefreshWithStatusChange { new_status } => {
+                    if let Some(existing) = self
+                        .changed_files
+                        .iter_mut()
+                        .find(|f| f.path == path)
+                    {
+                        *existing = file.clone();
+                    }
+                    if let Some(view) = self.file_views.get(&path) {
+                        view.update(cx, |row, cx| {
+                            row.update_status(new_status, cx);
+                        });
+                    }
+                }
+                RowAction::ProbeThenAdd => {
+                    let Some(svc) = self.service.clone() else { continue };
+                    let path_clone = path.clone();
+                    let handle = svc.spawn_result(move |s| async move {
+                        s.compute_stats(&path_clone).await
                     });
-                }).detach();
-            } else {
-                // Added or Deleted: existence is the change, show immediately.
-                self.changed_files.push(file);
+                    cx.spawn(async move |this, cx| {
+                        let Ok((stats, is_binary)) = handle.await else { return };
+                        let empty =
+                            !is_binary && stats.additions == 0 && stats.deletions == 0;
+                        if empty { return; }
+                        let _ = cx.update(|cx| {
+                            this.update(cx, |panel, cx| {
+                                let tab = &mut panel.changes_tab;
+                                if tab.suppressed.contains(&file.path) { return; }
+                                if tab.changed_files.iter().any(|f| f.path == file.path) {
+                                    return;
+                                }
+                                tab.changed_files.push(file);
+                                cx.notify();
+                            }).ok();
+                        });
+                    }).detach();
+                }
+                RowAction::AddNow => {
+                    self.changed_files.push(file);
+                }
             }
         }
     }
@@ -583,4 +609,133 @@ impl ChangesTab {
 
 pub struct ChangesSnapshot {
     pub changed_files: Vec<ChangedFile>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RowAction {
+    /// Path is suppressed pending a user action. Ignore this event.
+    Skip,
+    /// Row exists and the status is unchanged. Re-read stats/diff but
+    /// preserve any partial-discard staging the user is working on.
+    RefreshContent,
+    /// Row exists but the status changed (Added to Deleted, etc).
+    /// Full reset including staging — old per-line selections are
+    /// meaningless against the new status.
+    RefreshWithStatusChange { new_status: FileStatus },
+    /// No row yet, status is Modified. Gate on a non-empty diff before
+    /// showing so identical-on-both-sides files don't flicker in and out.
+    ProbeThenAdd,
+    /// No row yet, status is Added or Deleted. Show immediately.
+    AddNow,
+}
+
+pub(super) fn decide_row_action(
+    event_status: FileStatus,
+    existing_status: Option<FileStatus>,
+    suppressed: bool,
+) -> RowAction {
+    if suppressed {
+        return RowAction::Skip;
+    }
+    match existing_status {
+        Some(prev) if prev == event_status => RowAction::RefreshContent,
+        Some(_) => RowAction::RefreshWithStatusChange { new_status: event_status },
+        None => match event_status {
+            FileStatus::Modified => RowAction::ProbeThenAdd,
+            FileStatus::Added | FileStatus::Deleted => RowAction::AddNow,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decide_row_action, FileStatus, RowAction};
+
+    #[test]
+    fn suppressed_events_are_skipped() {
+        let action = decide_row_action(FileStatus::Modified, Some(FileStatus::Added), true);
+        assert_eq!(action, RowAction::Skip);
+    }
+
+    #[test]
+    fn new_added_file_is_added_immediately() {
+        let action = decide_row_action(FileStatus::Added, None, false);
+        assert_eq!(action, RowAction::AddNow);
+    }
+
+    #[test]
+    fn new_deleted_file_is_added_immediately() {
+        let action = decide_row_action(FileStatus::Deleted, None, false);
+        assert_eq!(action, RowAction::AddNow);
+    }
+
+    #[test]
+    fn new_modified_file_is_probed_first() {
+        let action = decide_row_action(FileStatus::Modified, None, false);
+        assert_eq!(action, RowAction::ProbeThenAdd);
+    }
+
+    /// Regression: `touch hello.txt` (creates empty file, classified as
+    /// Added) followed by `echo Hello > hello.txt` (classified as Added
+    /// again because the file still doesn't exist on the host). Previously
+    /// the second event was silently dropped by a status-change gate, so
+    /// the diff bar stayed empty. Must now refresh content without wiping
+    /// staging.
+    #[test]
+    fn same_status_event_refreshes_content_only() {
+        let action = decide_row_action(FileStatus::Added, Some(FileStatus::Added), false);
+        assert_eq!(action, RowAction::RefreshContent);
+    }
+
+    #[test]
+    fn modified_after_modified_refreshes_content_only() {
+        let action = decide_row_action(
+            FileStatus::Modified,
+            Some(FileStatus::Modified),
+            false,
+        );
+        assert_eq!(action, RowAction::RefreshContent);
+    }
+
+    /// A Modified row that receives a follow-up MODIFY (typical editor
+    /// autosave) must take the content-only path. The row-level handler
+    /// preserves partial-discard staging on that path; wiping it would
+    /// silently drop mid-triage work.
+    #[test]
+    fn modified_event_on_modified_row_preserves_staging_path() {
+        let action = decide_row_action(
+            FileStatus::Modified,
+            Some(FileStatus::Modified),
+            false,
+        );
+        assert_ne!(
+            action,
+            RowAction::RefreshWithStatusChange { new_status: FileStatus::Modified },
+            "same-status events must take the staging-preserving path",
+        );
+        assert_eq!(action, RowAction::RefreshContent);
+    }
+
+    #[test]
+    fn status_transition_refreshes_with_status_change() {
+        let action = decide_row_action(FileStatus::Deleted, Some(FileStatus::Added), false);
+        assert_eq!(
+            action,
+            RowAction::RefreshWithStatusChange { new_status: FileStatus::Deleted },
+        );
+    }
+
+    #[test]
+    fn added_to_modified_uses_status_change_path() {
+        // Added then the host-side baseline appears (e.g. user creates
+        // the file on host matching the sandbox content). Status goes
+        // Added -> Modified; staging built against the "new file" view
+        // no longer maps to the "existing file" hunk layout, so a full
+        // reset is the right call.
+        let action = decide_row_action(FileStatus::Modified, Some(FileStatus::Added), false);
+        assert_eq!(
+            action,
+            RowAction::RefreshWithStatusChange { new_status: FileStatus::Modified },
+        );
+    }
 }
