@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- Review panel correctly labels modified files as changed instead of new. Host-side stat errors other than "file not found" (permission denied, I/O) previously collapsed to "brand new file" and painted the wrong badge.
+- Discarded diff lines dim against the theme's panel color instead of a hard-coded dark overlay, so strikethrough rows stay readable in light and Catppuccin themes.
+
 ## 0.4.1
 
 - Remote host-shell is opt-in. New toggle in Settings > Remote control, off by default. When off, paired devices can't open a new host-shell tab or attach to an existing one; the mobile PWA hides the Host Shell option accordingly.
