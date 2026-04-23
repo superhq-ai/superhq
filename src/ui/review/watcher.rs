@@ -143,62 +143,13 @@ impl WatchBridge {
                             continue;
                         }
 
-                        // Only check host-side existence here (cheap local
-                        // stat). Sandbox-side existence is implied by the
-                        // event kind, and content comparison is deferred to
-                        // the UI's eager stats computation.
-                        let host_probes = dirty.keys().map(|rel| {
-                            let rel = rel.clone();
-                            let host_mount_path = host_mount_path.clone();
-                            async move {
-                                let exists = match host_mount_path {
-                                    Some(host) => {
-                                        tokio::fs::metadata(format!("{}/{}", host, rel))
-                                            .await
-                                            .is_ok()
-                                    }
-                                    None => false,
-                                };
-                                (rel, exists)
-                            }
-                        });
-                        let host_exists_map: HashMap<String, bool> =
-                            join_all(host_probes).await.into_iter().collect();
+                        let result = classify_changes(
+                            dirty,
+                            host_mount_path.as_deref(),
+                            &mut cached_files,
+                        ).await;
 
-                        let mut updated_files = HashMap::new();
-                        let mut removed_paths = HashSet::new();
-
-                        for (rel, kind) in &dirty {
-                            let host_exists = host_exists_map.get(rel).copied().unwrap_or(false);
-                            let sandbox_exists = *kind != shuru_proto::watch_kind::DELETE;
-
-                            let status = match (sandbox_exists, host_exists) {
-                                (false, true) => FileStatus::Deleted,
-                                (false, false) => {
-                                    cached_files.remove(rel);
-                                    removed_paths.insert(rel.clone());
-                                    continue;
-                                }
-                                (true, true) => FileStatus::Modified,
-                                (true, false) => FileStatus::Added,
-                            };
-
-                            let file = ChangedFile { path: rel.clone(), status };
-                            let prev_status = cached_files.get(rel).map(|e| e.status);
-                            cached_files.insert(rel.clone(), file.clone());
-                            let is_repeat_delete = status == FileStatus::Deleted
-                                && prev_status == Some(status);
-                            if !is_repeat_delete {
-                                updated_files.insert(rel.clone(), file);
-                            }
-                        }
-
-                        if !updated_files.is_empty() || !removed_paths.is_empty() {
-                            let result = DiffResult {
-                                dirty_paths: dirty.into_keys().collect(),
-                                updated_files,
-                                removed_paths,
-                            };
+                        if !result.updated_files.is_empty() || !result.removed_paths.is_empty() {
                             if tx.send(result).is_err() {
                                 break;
                             }
@@ -209,5 +160,249 @@ impl WatchBridge {
             .ok()?;
 
         Some((Self { stop, _handle: handle }, rx))
+    }
+}
+
+async fn classify_changes(
+    dirty: HashMap<String, u8>,
+    host_mount_path: Option<&str>,
+    cached_files: &mut HashMap<String, ChangedFile>,
+) -> DiffResult {
+    let host_probes = dirty.keys().map(|rel| {
+        let rel = rel.clone();
+        async move {
+            let exists = host_file_exists(host_mount_path, &rel).await;
+            (rel, exists)
+        }
+    });
+    let host_exists_map: HashMap<String, bool> =
+        join_all(host_probes).await.into_iter().collect();
+
+    let mut updated_files = HashMap::new();
+    let mut removed_paths = HashSet::new();
+
+    for (rel, kind) in &dirty {
+        let host_exists = host_exists_map.get(rel).copied().unwrap_or(false);
+        let sandbox_exists = *kind != shuru_proto::watch_kind::DELETE;
+
+        let status = match (sandbox_exists, host_exists) {
+            (false, true) => FileStatus::Deleted,
+            (false, false) => {
+                cached_files.remove(rel);
+                removed_paths.insert(rel.clone());
+                continue;
+            }
+            (true, true) => FileStatus::Modified,
+            (true, false) => FileStatus::Added,
+        };
+
+        let file = ChangedFile { path: rel.clone(), status };
+        let prev_status = cached_files.get(rel).map(|e| e.status);
+        cached_files.insert(rel.clone(), file.clone());
+        let is_repeat_delete = status == FileStatus::Deleted
+            && prev_status == Some(status);
+        if !is_repeat_delete {
+            updated_files.insert(rel.clone(), file);
+        }
+    }
+
+    DiffResult {
+        dirty_paths: dirty.into_keys().collect(),
+        updated_files,
+        removed_paths,
+    }
+}
+
+async fn host_file_exists(host_mount_path: Option<&str>, rel: &str) -> bool {
+    let Some(host) = host_mount_path else { return false };
+    match tokio::fs::metadata(format!("{}/{}", host, rel)).await {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+
+    struct ScratchDir(PathBuf);
+
+    impl ScratchDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "superhq-watcher-test-{}-{}-{}",
+                name,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0),
+            ));
+            fs::remove_dir_all(&dir).ok();
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl std::ops::Deref for ScratchDir {
+        type Target = Path;
+        fn deref(&self) -> &Path { &self.0 }
+    }
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+            }
+            fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    fn write_file(path: &Path, content: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut f = fs::File::create(path).unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+    }
+
+    fn dirty(entries: &[(&str, u8)]) -> HashMap<String, u8> {
+        entries.iter().map(|(p, k)| (p.to_string(), *k)).collect()
+    }
+
+    #[tokio::test]
+    async fn modify_existing_file_is_modified() {
+        let host = ScratchDir::new("mod-existing");
+        write_file(&host.join("src/main.rs"), "fn main() {}");
+        let mut cache = HashMap::new();
+
+        let result = classify_changes(
+            dirty(&[("src/main.rs", shuru_proto::watch_kind::MODIFY)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        assert_eq!(
+            result.updated_files.get("src/main.rs").map(|f| f.status),
+            Some(FileStatus::Modified),
+        );
+    }
+
+    #[tokio::test]
+    async fn modify_missing_file_is_added() {
+        let host = ScratchDir::new("add-missing");
+        let mut cache = HashMap::new();
+
+        let result = classify_changes(
+            dirty(&[("src/new.rs", shuru_proto::watch_kind::MODIFY)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        assert_eq!(
+            result.updated_files.get("src/new.rs").map(|f| f.status),
+            Some(FileStatus::Added),
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_existing_file_is_deleted() {
+        let host = ScratchDir::new("del-existing");
+        write_file(&host.join("src/main.rs"), "fn main() {}");
+        let mut cache = HashMap::new();
+
+        let result = classify_changes(
+            dirty(&[("src/main.rs", shuru_proto::watch_kind::DELETE)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        assert_eq!(
+            result.updated_files.get("src/main.rs").map(|f| f.status),
+            Some(FileStatus::Deleted),
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_missing_file_goes_to_removed_paths() {
+        let host = ScratchDir::new("del-missing");
+        let mut cache = HashMap::new();
+
+        let result = classify_changes(
+            dirty(&[("src/gone.rs", shuru_proto::watch_kind::DELETE)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        assert!(result.updated_files.is_empty());
+        assert!(result.removed_paths.contains("src/gone.rs"));
+    }
+
+    #[tokio::test]
+    async fn scratch_workspace_modify_is_added() {
+        let mut cache = HashMap::new();
+
+        let result = classify_changes(
+            dirty(&[("src/main.rs", shuru_proto::watch_kind::MODIFY)]),
+            None,
+            &mut cache,
+        ).await;
+
+        assert_eq!(
+            result.updated_files.get("src/main.rs").map(|f| f.status),
+            Some(FileStatus::Added),
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn permission_denied_is_not_misclassified_as_added() {
+        use std::os::unix::fs::PermissionsExt;
+        let host = ScratchDir::new("perm-denied");
+        let locked = host.join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        write_file(&locked.join("main.rs"), "fn main() {}");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let mut cache = HashMap::new();
+        let result = classify_changes(
+            dirty(&[("locked/main.rs", shuru_proto::watch_kind::MODIFY)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(
+            result.updated_files.get("locked/main.rs").map(|f| f.status),
+            Some(FileStatus::Modified),
+            "permission-denied stat must not downgrade to Added",
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_delete_is_suppressed_from_updated_files() {
+        let host = ScratchDir::new("repeat-del");
+        write_file(&host.join("src/main.rs"), "fn main() {}");
+        let mut cache = HashMap::new();
+        cache.insert(
+            "src/main.rs".to_string(),
+            ChangedFile { path: "src/main.rs".to_string(), status: FileStatus::Deleted },
+        );
+
+        let result = classify_changes(
+            dirty(&[("src/main.rs", shuru_proto::watch_kind::DELETE)]),
+            Some(host.to_str().unwrap()),
+            &mut cache,
+        ).await;
+
+        assert!(
+            result.updated_files.is_empty(),
+            "repeat DELETE must not re-emit an update",
+        );
     }
 }

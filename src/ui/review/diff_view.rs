@@ -713,13 +713,13 @@ impl Element for DiffBlock {
                     let content_x = gutter_x_end + px(CONTENT_PAD) - scroll_x;
                     let _ = sc.paint(point(content_x, y), line_h, window, cx);
                     if is_discarded {
-                        // Dim overlay + strikethrough
+                        let overlay = Rgba { a: 0.7, ..t::bg_base() };
                         window.paint_quad(fill(
                             Bounds {
                                 origin: point(content_bounds.origin.x, y),
                                 size: size(content_bounds.size.width, line_h),
                             },
-                            Rgba { r: 0.09, g: 0.09, b: 0.11, a: 0.7 },
+                            overlay,
                         ));
                         let text_y = y + line_h * 0.5;
                         window.paint_quad(fill(
