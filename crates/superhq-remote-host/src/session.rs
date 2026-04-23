@@ -488,6 +488,22 @@ async fn drive_data_stream<H: RemoteHandler>(
                 .await
                 .map_err(|e| anyhow!("pty_stream: {}", e.message))
         }
+        StreamInit::Attachment { workspace_id, tab_id, name, mime, size } => {
+            let device = session.device_id();
+            handler
+                .attachment_stream(
+                    workspace_id,
+                    tab_id,
+                    name,
+                    mime,
+                    size,
+                    device,
+                    send,
+                    recv,
+                )
+                .await
+                .map_err(|e| anyhow!("attachment_stream: {}", e.message))
+        }
         StreamInit::Status => {
             // Not yet implemented; close the stream politely.
             let _ = send.finish();

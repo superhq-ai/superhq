@@ -488,6 +488,88 @@ impl RemoteHandler for AppHandler {
         Ok(())
     }
 
+    async fn attachment_stream(
+        &self,
+        workspace_id: WorkspaceId,
+        tab_id: TabId,
+        name: String,
+        _mime: Option<String>,
+        size: u64,
+        _device_id: Option<String>,
+        mut send: SendStream,
+        mut recv: RecvStream,
+    ) -> Result<(), RpcError> {
+        /// Hard cap on a single upload. Mobile camera photos are
+        /// usually 3-8 MB; 32 MB covers HEIC burst / 4K screenshots
+        /// without leaving runaway-upload capacity unchecked.
+        const MAX_ATTACHMENT_BYTES: u64 = 32 * 1024 * 1024;
+
+        if size > MAX_ATTACHMENT_BYTES {
+            return Err(RpcError::new(
+                error_code::INVALID_PARAMS,
+                format!(
+                    "attachment too large: {size} bytes (max {MAX_ATTACHMENT_BYTES})"
+                ),
+            ));
+        }
+        // Collect bytes. Cap defensively even if the client lied about size.
+        let cap = size.min(MAX_ATTACHMENT_BYTES) as usize;
+        let mut buf = Vec::with_capacity(cap);
+        let mut tmp = [0u8; 32 * 1024];
+        loop {
+            let n = match recv.read(&mut tmp).await {
+                Ok(Some(n)) => n,
+                Ok(None) => break,
+                Err(e) => {
+                    return Err(RpcError::new(
+                        error_code::INTERNAL_ERROR,
+                        format!("attachment read: {e}"),
+                    ));
+                }
+            };
+            if n == 0 {
+                break;
+            }
+            if buf.len() + n > MAX_ATTACHMENT_BYTES as usize {
+                return Err(RpcError::new(
+                    error_code::INVALID_PARAMS,
+                    "attachment exceeded declared size",
+                ));
+            }
+            buf.extend_from_slice(&tmp[..n]);
+        }
+        tracing::info!(
+            workspace_id,
+            tab_id,
+            name = %name,
+            bytes = buf.len(),
+            "remote: attachment received"
+        );
+        // Hand off to the GPUI thread — it owns the sandbox handles +
+        // tab metadata.
+        let path = self
+            .commands
+            .write_attachment(workspace_id, tab_id, name.clone(), buf)
+            .await?;
+        // Type the resulting path into the tab's PTY so the user can
+        // Enter (or continue editing). Space-wrap so it doesn't glue
+        // onto whatever the cursor already had.
+        if let Some(bus) = self.find_bus(workspace_id, tab_id) {
+            let inject = format!(" {path} ");
+            let _ = bus.writer.send_input(inject.as_bytes());
+        }
+        // Respond on the send stream with the final path.
+        let result = superhq_remote_proto::stream::AttachmentResult {
+            path: path.clone(),
+        };
+        let wire = serde_json::to_string(&result)
+            .map_err(|e| RpcError::internal(format!("encode result: {e}")))?;
+        let _ = send.write_all(wire.as_bytes()).await;
+        let _ = send.write_all(b"\n").await;
+        let _ = send.finish();
+        Ok(())
+    }
+
     async fn audit_rpc(&self, method: &str, ok: bool, device_id: Option<String>) {
         self.audit.log(method, ok, device_id.as_deref());
     }

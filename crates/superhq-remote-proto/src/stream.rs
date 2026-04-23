@@ -23,4 +23,29 @@ pub enum StreamInit {
     },
     /// A status event stream (host → client, unidirectional).
     Status,
+    /// Upload a binary attachment (typically an image) that the host
+    /// saves into the tab's workspace and then types the resulting
+    /// path into the PTY. Client writes raw bytes after the ack and
+    /// closes the send side; server replies with the final path.
+    Attachment {
+        workspace_id: WorkspaceId,
+        tab_id: TabId,
+        /// Base filename (no directory traversal). The host sanitizes
+        /// and may adjust to avoid collisions.
+        name: String,
+        /// MIME hint, e.g. "image/png". Optional, used only for logs.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mime: Option<String>,
+        /// Byte length the client intends to send. Lets the server
+        /// reject up front if it's over the limit.
+        size: u64,
+    },
+}
+
+/// Result written back on the attachment stream after the upload
+/// completes. One line of JSON followed by the send side closing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AttachmentResult {
+    /// Absolute path the file was saved to.
+    pub path: String,
 }

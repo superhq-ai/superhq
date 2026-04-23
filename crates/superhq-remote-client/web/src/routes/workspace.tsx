@@ -233,6 +233,28 @@ export default function WorkspaceRoute() {
                     terminalRef.current?.setCtrlArmed(next);
                 }}
                 onToggleAlt={() => setAltArmed((v) => !v)}
+                onAttach={
+                    client && activeTab && activeTab.pty_ready
+                        ? async (file) => {
+                              try {
+                                  const buf = await file.arrayBuffer();
+                                  await client.upload_attachment(
+                                      BigInt(wsId),
+                                      BigInt(activeTab.tab_id),
+                                      file.name,
+                                      file.type || undefined,
+                                      new Uint8Array(buf),
+                                  );
+                              } catch (e) {
+                                  setActionError(
+                                      e instanceof Error
+                                          ? e.message
+                                          : "Upload failed",
+                                  );
+                              }
+                          }
+                        : undefined
+                }
             />
 
             <NewTabSheet
@@ -423,13 +445,20 @@ function KeyBar({
     onPress,
     onToggleCtrl,
     onToggleAlt,
+    onAttach,
 }: {
     ctrlArmed: boolean;
     altArmed: boolean;
     onPress: (bytes: Uint8Array) => void;
     onToggleCtrl: () => void;
     onToggleAlt: () => void;
+    /// File picker target when set. Receives the selected image
+    /// (one at a time). Undefined disables the attach button, e.g.
+    /// before the active tab's PTY is ready.
+    onAttach?: (file: File) => Promise<void> | void;
 }) {
+    const attachInputRef = useRef<HTMLInputElement | null>(null);
+    const [attaching, setAttaching] = useState(false);
     const bytes = (s: string) => new TextEncoder().encode(s);
     type Entry =
         | { id: string; label: React.ReactNode; send: Uint8Array; wide?: boolean }
@@ -477,6 +506,41 @@ function KeyBar({
             }}
         >
             <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto px-3">
+                {onAttach ? (
+                    <>
+                        <input
+                            ref={attachInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                // Reset so selecting the same file twice still fires.
+                                if (e.target) e.target.value = "";
+                                if (!file) return;
+                                setAttaching(true);
+                                try {
+                                    await onAttach(file);
+                                } finally {
+                                    setAttaching(false);
+                                }
+                            }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => attachInputRef.current?.click()}
+                            disabled={attaching}
+                            aria-label="Attach image"
+                            className="glass-pill flex h-10 min-w-[44px] shrink-0 items-center justify-center rounded-[14px] px-3 text-app-text disabled:opacity-50"
+                        >
+                            {attaching ? (
+                                <span className="text-[11px]">…</span>
+                            ) : (
+                                <PaperclipIcon />
+                            )}
+                        </button>
+                    </>
+                ) : null}
                 {keys.map((k) => {
                     const isToggle = "toggle" in k;
                     const active = isToggle && k.active;
@@ -503,6 +567,23 @@ function KeyBar({
                 })}
             </div>
         </div>
+    );
+}
+
+function PaperclipIcon() {
+    return (
+        <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
     );
 }
 

@@ -357,6 +357,24 @@ impl ClientHandle {
     pub fn close(&self) {
         self.client.close();
     }
+
+    /// Upload a binary attachment (typically an image) to the host
+    /// and have it type the resulting path into the tab's PTY.
+    /// Returns the host-side absolute path as a string.
+    pub async fn upload_attachment(
+        &self,
+        workspace_id: i64,
+        tab_id: u64,
+        name: String,
+        mime: Option<String>,
+        bytes: Uint8Array,
+    ) -> Result<String, JsValue> {
+        let raw = uint8array_to_vec(&bytes);
+        self.client
+            .upload_attachment(workspace_id, tab_id, name, mime, raw)
+            .await
+            .map_err(|e| js_err_msg(&format!("upload_attachment: {e}")))
+    }
 }
 
 /// JS-facing handle for a live PTY stream. Read chunks incrementally,

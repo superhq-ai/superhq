@@ -38,6 +38,13 @@ pub enum HostCommand {
         mode: TabCloseMode,
         response: oneshot::Sender<Result<(), RpcError>>,
     },
+    WriteAttachment {
+        workspace_id: WorkspaceId,
+        tab_id: TabId,
+        name: String,
+        bytes: Vec<u8>,
+        response: oneshot::Sender<Result<String, RpcError>>,
+    },
 }
 
 #[derive(Clone)]
@@ -91,6 +98,24 @@ impl HostCommandDispatcher {
             response: resp_tx,
         };
         send_and_await(&self.tx, cmd, resp_rx, "tabs.close").await
+    }
+
+    pub async fn write_attachment(
+        &self,
+        workspace_id: WorkspaceId,
+        tab_id: TabId,
+        name: String,
+        bytes: Vec<u8>,
+    ) -> Result<String, RpcError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        let cmd = HostCommand::WriteAttachment {
+            workspace_id,
+            tab_id,
+            name,
+            bytes,
+            response: resp_tx,
+        };
+        send_and_await(&self.tx, cmd, resp_rx, "attachment.write").await
     }
 }
 

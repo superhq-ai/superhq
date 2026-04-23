@@ -531,6 +531,114 @@ impl AppView {
                 self.remote_access.push_snapshot(snapshot);
                 let _ = response.send(Ok(()));
             }
+            ui::remote::HostCommand::WriteAttachment {
+                workspace_id,
+                tab_id,
+                name,
+                bytes,
+                response,
+            } => {
+                let result = self.write_attachment(workspace_id, tab_id, &name, &bytes, cx);
+                let _ = response.send(result);
+            }
+        }
+    }
+
+    /// Resolve the destination for a remote-uploaded file + write it.
+    /// Agent/guest-shell tabs land inside `/workspace/.attachments/`
+    /// in the sandbox (where Claude Code and friends can read them by
+    /// path). Host-shell tabs save to `~/Downloads/superhq-attachments/`
+    /// on the host OS. Returns the absolute path the user can refer to.
+    fn write_attachment(
+        &self,
+        workspace_id: i64,
+        tab_id: u64,
+        name: &str,
+        bytes: &[u8],
+        cx: &Context<Self>,
+    ) -> std::result::Result<String, superhq_remote_proto::RpcError> {
+        use superhq_remote_proto::{error_code, RpcError};
+        use ui::terminal::session::TabKind;
+
+        // Strip any directory separators the client might have sent.
+        let sanitized = std::path::Path::new(name)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("attachment.bin")
+            .to_string();
+
+        let Some(session) = self.terminal.read(cx).sessions().get(&workspace_id) else {
+            return Err(RpcError::new(
+                error_code::NOT_FOUND,
+                format!("workspace {workspace_id} is not active"),
+            ));
+        };
+
+        let session_ref = session.read(cx);
+        let tab = session_ref
+            .tabs
+            .iter()
+            .find(|t| t.tab_id == tab_id)
+            .ok_or_else(|| {
+                RpcError::new(
+                    error_code::NOT_FOUND,
+                    format!("tab {tab_id} not found"),
+                )
+            })?;
+
+        // Resolve the sandbox for sandbox-bound tabs.
+        let sandbox = match &tab.kind {
+            TabKind::Agent { sandbox: Some(sb), .. } => Some(sb.clone()),
+            TabKind::Shell { sandbox, .. } => Some(sandbox.clone()),
+            TabKind::Agent { sandbox: None, .. } => {
+                return Err(RpcError::new(
+                    error_code::NOT_FOUND,
+                    "agent tab is not running",
+                ));
+            }
+            TabKind::HostShell { .. } => None,
+        };
+
+        // Write + block on completion. Reasonable since the upload's
+        // already in the critical path of a blocking RPC response.
+        let bytes = bytes.to_vec();
+        let file_name = sanitized.clone();
+        let tokio_handle = self.terminal.read(cx).tokio_handle().clone();
+
+        if let Some(sb) = sandbox {
+            let guest_path = format!("/workspace/.attachments/{file_name}");
+            let sb_for_mkdir = sb.clone();
+            let mkdir = tokio_handle.block_on(async move {
+                sb_for_mkdir
+                    .exec_in("bash", "mkdir -p /workspace/.attachments")
+                    .await
+            });
+            if let Err(e) = mkdir {
+                return Err(RpcError::internal(format!("mkdir: {e}")));
+            }
+            let sb_for_write = sb.clone();
+            let path_for_write = guest_path.clone();
+            let write = tokio_handle.block_on(async move {
+                sb_for_write.write_file(&path_for_write, &bytes).await
+            });
+            if let Err(e) = write {
+                return Err(RpcError::internal(format!("write_file: {e}")));
+            }
+            Ok(guest_path)
+        } else {
+            // Host shell: save under ~/Downloads/superhq-attachments/.
+            let home = std::env::var("HOME").map_err(|_| {
+                RpcError::internal("no HOME for host-shell attachment")
+            })?;
+            let dir = std::path::PathBuf::from(home)
+                .join("Downloads")
+                .join("superhq-attachments");
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| RpcError::internal(format!("mkdir: {e}")))?;
+            let path = dir.join(&file_name);
+            std::fs::write(&path, &bytes)
+                .map_err(|e| RpcError::internal(format!("write: {e}")))?;
+            Ok(path.display().to_string())
         }
     }
 

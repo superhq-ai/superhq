@@ -322,6 +322,66 @@ impl RemoteClient {
         }
     }
 
+    /// Open a bidi stream, send a `StreamInit::Attachment`, await the
+    /// ack, write `bytes`, then read the JSON-encoded
+    /// `AttachmentResult { path }` the server writes back.
+    pub async fn upload_attachment(
+        &self,
+        workspace_id: superhq_remote_proto::types::WorkspaceId,
+        tab_id: superhq_remote_proto::types::TabId,
+        name: String,
+        mime: Option<String>,
+        bytes: Vec<u8>,
+    ) -> Result<String> {
+        let (mut send, mut recv) = self.inner.conn.open_bi().await?;
+        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        let init_params = serde_json::to_value(StreamInit::Attachment {
+            workspace_id,
+            tab_id,
+            name,
+            mime,
+            size: bytes.len() as u64,
+        })?;
+        let init_req = Request::new(id.into(), STREAM_INIT, init_params);
+        let wire = encode_request(&init_req)?;
+        send.write_all(wire.as_bytes()).await?;
+        send.write_all(b"\n").await?;
+
+        // Read ack.
+        let line = read_line(&mut recv)
+            .await?
+            .ok_or_else(|| anyhow!("stream closed before attachment init ack"))?;
+        match decode(&line)? {
+            Message::Response(resp) if resp.id.as_number() == Some(id) => {
+                if let Some(err) = resp.error {
+                    return Err(anyhow!(
+                        "attachment init rejected: {} ({})",
+                        err.message,
+                        err.code
+                    ));
+                }
+            }
+            other => {
+                return Err(anyhow!(
+                    "unexpected first message on attachment stream: {other:?}"
+                ));
+            }
+        }
+
+        // Stream the bytes.
+        send.write_all(&bytes).await?;
+        send.finish()?;
+
+        // Read the single-line result the server writes after save.
+        let result_line = read_line(&mut recv)
+            .await?
+            .ok_or_else(|| anyhow!("stream closed before attachment result"))?;
+        let result: superhq_remote_proto::stream::AttachmentResult =
+            serde_json::from_str(&result_line)
+                .map_err(|e| anyhow!("decode attachment result: {e}"))?;
+        Ok(result.path)
+    }
+
     /// Politely close the control stream and the underlying connection.
     pub fn close(&self) {
         self.inner.conn.close(0u32.into(), b"client closed");

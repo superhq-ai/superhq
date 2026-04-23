@@ -119,6 +119,37 @@ pub trait RemoteHandler: Send + Sync + 'static {
         device_id: Option<String>,
     ) -> Result<(), RpcError>;
 
+    /// Handle a newly opened attachment upload stream. Client writes
+    /// `size` bytes after the `stream.init` ack; handler saves them,
+    /// writes a JSON `AttachmentResult { path }` line, and closes.
+    /// Default impl returns unimplemented.
+    async fn attachment_stream(
+        &self,
+        workspace_id: WorkspaceId,
+        tab_id: TabId,
+        name: String,
+        mime: Option<String>,
+        size: u64,
+        device_id: Option<String>,
+        send: SendStream,
+        recv: RecvStream,
+    ) -> Result<(), RpcError> {
+        let _ = (
+            workspace_id,
+            tab_id,
+            name,
+            mime,
+            size,
+            device_id,
+            send,
+            recv,
+        );
+        Err(RpcError::new(
+            error_code::INTERNAL_ERROR,
+            "attachment.stream not implemented by this handler",
+        ))
+    }
+
     /// Handle a newly opened PTY data stream. The handler owns the stream
     /// from this point and is responsible for pumping bytes in both
     /// directions (recv → PTY stdin, PTY stdout → send). Returns when the
