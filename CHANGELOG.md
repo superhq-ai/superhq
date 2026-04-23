@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3
+
+- Terminal renders Unicode block elements (U+2580 to U+259F: half blocks, eighths, quadrants, shades) as exact filled rects instead of font glyphs. TUI splash logos built from `▀ ▄ █` (opencode, Claude Code, codex) now line up cleanly instead of staggering.
+- Terminal replies to OSC 10/11/12 color queries with the active palette's fg/bg/cursor. Adaptive TUIs (Helix, newer neovim, some prompt frameworks) that query instead of reading `COLORFGBG` now pick the right palette in light and dark modes. OSC-SET overrides are honored on the response side too.
+- Cursor stays visible when you scroll back into history. Previously any scroll at all hid it; now it rides with the scroll and only disappears when the cursor row leaves the viewport.
+- Typing or pasting snaps the viewport back to the prompt, matching xterm's `scrollKey` behavior. Works even for raw-mode apps and password prompts that don't echo input.
+- Remote-control popover closes automatically when a pair request arrives, so the approval dialog is no longer covered.
+- Revoking a paired device now rejects every subsequent RPC and data-stream from that device with `AUTH_INVALID`. Previously an already-connected device kept working until remote control was toggled off and on.
+
 ## 0.4.2
 
 - Review panel correctly labels modified files as changed instead of new. Host-side stat errors other than "file not found" (permission denied, I/O) previously collapsed to "brand new file" and painted the wrong badge.
