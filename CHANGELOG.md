@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4
+
+- Remote clients can upload image attachments. A new paperclip button in the PWA's key bar opens a file picker; the chosen image is streamed to the host over a dedicated iroh data stream, saved inside the sandbox at `/workspace/.attachments/<name>` (or `~/Downloads/superhq-attachments/<name>` for host-shell tabs), and the resulting path is typed into the PTY so the user can hit Enter to pass it to the agent.
+- Cap of 32 MiB per upload. Host-shell attachments require the remote host-shell toggle.
+
 ## 0.4.3
 
 - Terminal renders Unicode block elements (U+2580 to U+259F: half blocks, eighths, quadrants, shades) as exact filled rects instead of font glyphs. TUI splash logos built from `▀ ▄ █` (opencode, Claude Code, codex) now line up cleanly instead of staggering.
